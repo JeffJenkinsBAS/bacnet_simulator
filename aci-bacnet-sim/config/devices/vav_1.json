@@ -1,0 +1,90 @@
+{
+  "group_id": "ACI-SIM-VAV-1",
+  "instance_offset": 11000,
+  "description": "Simulated reheat/airflow/discharge-temp side of VAV-1 (real controller OF141-E2 / 240006). Zone temperature is not modeled here -- real communicating ZS thermostat.",
+  "points": [
+    {
+      "alias": "discharge_temp",
+      "object_type": "analog-input",
+      "object_instance": 1,
+      "object_name": "VAV-1 Discharge Temp",
+      "description": "Simulated discharge air temperature",
+      "units": "degrees-fahrenheit",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "initial_value": 55.0,
+      "minimum": 40.0,
+      "maximum": 120.0,
+      "update_interval_seconds": 1,
+      "cov_increment": 0.5,
+      "normal_range": {
+        "low": 55.0,
+        "high": 95.0
+      }
+    },
+    {
+      "alias": "damper_position_command",
+      "object_type": "analog-output",
+      "object_instance": 20,
+      "object_name": "VAV-1 Damper Position Command",
+      "description": "Calculated primary-air damper position, sent to the simulator",
+      "units": "percent",
+      "signal_direction": "webctrl_to_sim",
+      "writable": true,
+      "commandable": true,
+      "initial_value": 0.0,
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "update_interval_seconds": 1,
+      "relinquish_default": 0.0
+    },
+    {
+      "alias": "hw_valve_command",
+      "object_type": "analog-output",
+      "object_instance": 21,
+      "object_name": "VAV-1 HW Valve",
+      "description": "Reheat valve position command",
+      "units": "percent",
+      "signal_direction": "webctrl_to_sim",
+      "writable": true,
+      "commandable": true,
+      "initial_value": 0.0,
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "update_interval_seconds": 1,
+      "relinquish_default": 0.0
+    },
+    {
+      "alias": "airflow_setpoint",
+      "object_type": "analog-output",
+      "object_instance": 22,
+      "object_name": "VAV-1 Airflow Setpoint",
+      "description": "Calculated target airflow -- context for the simulator, not a hard override of the simulated Airflow value",
+      "units": "cubic-feet-per-minute",
+      "signal_direction": "webctrl_to_sim",
+      "writable": true,
+      "commandable": true,
+      "initial_value": 0.0,
+      "minimum": 0.0,
+      "maximum": 2000.0,
+      "update_interval_seconds": 1,
+      "relinquish_default": 0.0
+    },
+    {
+      "alias": "airflow",
+      "object_type": "analog-value",
+      "object_instance": 80,
+      "object_name": "VAV-1 Airflow",
+      "description": "Simulated actual measured airflow",
+      "units": "cubic-feet-per-minute",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "commandable": false,
+      "initial_value": 0.0,
+      "minimum": 0.0,
+      "maximum": 2000.0,
+      "update_interval_seconds": 1,
+      "cov_increment": 5.0
+    }
+  ]
+}

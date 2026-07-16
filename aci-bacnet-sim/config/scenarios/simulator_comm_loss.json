@@ -1,0 +1,41 @@
+{
+  "scenario_id": "simulator_comm_loss",
+  "title": "Simulator Device Goes Offline",
+  "description": "The entire simulated supervisory device stops responding to any BACnet traffic -- Who-Is, reads, and writes -- exactly as it would if the physical bench PC lost power or network connectivity, rather than any single point failing.",
+  "initial_conditions": {
+    "outside_air_temperature": 70,
+    "outside_air_humidity": 50
+  },
+  "events": [
+    {
+      "time_seconds": 30,
+      "action": "set_fault",
+      "equipment": null,
+      "alias": null,
+      "fault": "device_offline",
+      "description": "The whole device stops responding to any BACnet request"
+    },
+    {
+      "time_seconds": 150,
+      "action": "clear_fault",
+      "equipment": null,
+      "alias": null,
+      "fault": "device_offline",
+      "description": "Communication restored after 2 minutes"
+    }
+  ],
+  "expected_results": [
+    "Every WebCTRL point bound to this device shows a communication failure / stale value, not just one equipment group",
+    "WebCTRL should NOT show individual point-level errors that suggest a specific sensor or actuator problem",
+    "All points should recover cleanly once communication is restored at t+150s, with no lingering incorrect values"
+  ],
+  "completion_criteria": [
+    "Student recognizes this as a device-wide communication failure rather than troubleshooting individual points",
+    "Student verifies recovery by confirming ALL affected points return, not just the first one checked"
+  ],
+  "instructor_notes": "Good early-semester scenario for teaching students to distinguish 'one point is wrong' from 'the whole device is unreachable' before diving into point-by-point diagnosis.",
+  "student_objectives": [
+    "Recognize a device-level communication failure pattern versus a point-level fault",
+    "Practice the correct triage order: confirm scope of the problem before troubleshooting specifics"
+  ]
+}

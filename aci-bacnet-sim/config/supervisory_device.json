@@ -1,0 +1,5 @@
+{
+  "device_instance": 242000,
+  "device_name": "ACI-SIM-SUPERVISOR",
+  "description": "ACI BACnet Building Simulation Platform -- one supervisory device hosting every simulated equipment group's AI/AO/AV/BI/BO/BV points. See config/devices/*.json for the equipment groups and their instance_offset."
+}

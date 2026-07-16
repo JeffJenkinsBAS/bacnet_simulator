@@ -1,0 +1,59 @@
+{
+  "scenario_id": "chiller1_chws_sensor_drift",
+  "title": "Chiller-1 Chilled Water Supply Sensor Slowly Drifting High",
+  "description": "Chiller-1 is running normally and proven, but its CHWS Temp sensor begins drifting upward over several minutes -- a classic slow-onset sensor calibration failure rather than a sudden fault, meant to be caught by trending rather than an alarm.",
+  "initial_conditions": {
+    "outside_air_temperature": 88,
+    "outside_air_humidity": 60
+  },
+  "events": [
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-CHILLER-1",
+      "alias": "chiller_enable",
+      "value": true,
+      "description": "Enable Chiller-1"
+    },
+    {
+      "time_seconds": 5,
+      "action": "set_value",
+      "equipment": "ACI-SIM-CHILLER-1",
+      "alias": "chiller_ss",
+      "value": true,
+      "description": "Start Chiller-1"
+    },
+    {
+      "time_seconds": 5,
+      "action": "set_value",
+      "equipment": "ACI-SIM-CHILLER-1",
+      "alias": "chw_pump_ss",
+      "value": true,
+      "description": "Start the CHW pump"
+    },
+    {
+      "time_seconds": 120,
+      "action": "set_fault",
+      "equipment": "ACI-SIM-CHILLER-1",
+      "alias": "chws_temp",
+      "fault": "drift",
+      "parameters": { "rate_per_second": 0.02 },
+      "description": "CHWS Temp begins drifting upward at 0.02 F/s (~1.2 F/min) after the chiller has had time to prove and settle near setpoint"
+    }
+  ],
+  "expected_results": [
+    "Chiller-1 CHWS Temp reads normally (near 44F) for the first two minutes",
+    "CHWS Temp then climbs gradually and continuously rather than jumping or oscillating",
+    "Chiller Status remains proven/OK throughout -- this is a sensor problem, not an equipment failure",
+    "Downstream cooling performance should appear to degrade slowly, mimicking a real fouled/miscalibrated sensor"
+  ],
+  "completion_criteria": [
+    "Student notices the drift via a trend rather than a single reading",
+    "Student differentiates this from a real loss-of-cooling-capacity fault (chiller status, flow, and enable/command points remain normal)"
+  ],
+  "instructor_notes": "Good scenario for teaching trend usage specifically -- a single point-in-time reading a few minutes in doesn't look obviously wrong.",
+  "student_objectives": [
+    "Use trend data, not just a single point read, to catch a slow-onset sensor fault",
+    "Correctly rule out equipment failure when only a sensor is at fault"
+  ]
+}

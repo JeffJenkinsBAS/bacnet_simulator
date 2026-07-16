@@ -1,0 +1,82 @@
+{
+  "group_id": "ACI-SIM-BOILER-MGR",
+  "instance_offset": 5000,
+  "description": "Boiler Manager's plant-level status/enable points.",
+  "points": [
+    {
+      "alias": "boiler1_ok",
+      "object_type": "binary-input",
+      "object_instance": 40,
+      "object_name": "BOILER-MGR Boiler 1 OK",
+      "description": "Plant-level mirror of Boiler-1's own status (separate address per Jeff's correction)",
+      "units": "no-units",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "initial_value": 0,
+      "update_interval_seconds": 1
+    },
+    {
+      "alias": "boiler2_ok",
+      "object_type": "binary-input",
+      "object_instance": 41,
+      "object_name": "BOILER-MGR Boiler 2 OK",
+      "description": "Plant-level mirror of Boiler-2's own status",
+      "units": "no-units",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "initial_value": 0,
+      "update_interval_seconds": 1
+    },
+    {
+      "alias": "boiler3_ok",
+      "object_type": "binary-input",
+      "object_instance": 42,
+      "object_name": "BOILER-MGR Boiler 3 OK",
+      "description": "Plant-level mirror of Boiler-3's own status",
+      "units": "no-units",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "initial_value": 0,
+      "update_interval_seconds": 1
+    },
+    {
+      "alias": "enable_boiler1",
+      "object_type": "binary-output",
+      "object_instance": 60,
+      "object_name": "BOILER-MGR Enable Boiler1",
+      "description": "Boiler 1 enable command",
+      "units": "no-units",
+      "signal_direction": "webctrl_to_sim",
+      "writable": true,
+      "commandable": true,
+      "initial_value": 0,
+      "update_interval_seconds": 1
+    },
+    {
+      "alias": "enable_boiler2",
+      "object_type": "binary-output",
+      "object_instance": 61,
+      "object_name": "BOILER-MGR Enable Boiler2",
+      "description": "Boiler 2 enable command",
+      "units": "no-units",
+      "signal_direction": "webctrl_to_sim",
+      "writable": true,
+      "commandable": true,
+      "initial_value": 0,
+      "update_interval_seconds": 1
+    },
+    {
+      "alias": "enable_boiler3",
+      "object_type": "binary-output",
+      "object_instance": 62,
+      "object_name": "BOILER-MGR Enable Boiler3",
+      "description": "Boiler 3 enable command",
+      "units": "no-units",
+      "signal_direction": "webctrl_to_sim",
+      "writable": true,
+      "commandable": true,
+      "initial_value": 0,
+      "update_interval_seconds": 1
+    }
+  ]
+}

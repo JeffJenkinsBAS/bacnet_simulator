@@ -1,0 +1,173 @@
+{
+  "group_id": "ACI-SIM-CHW-PLANT",
+  "instance_offset": 1000,
+  "description": "Chiller Manager's plant-level status/common-header points, plus Emerg/Refrig Shutdown hard interlocks.",
+  "points": [
+    {
+      "alias": "ch1_power_loss",
+      "object_type": "binary-input",
+      "object_instance": 40,
+      "object_name": "CHW-PLANT CH 1 Power Loss",
+      "description": "Simulated chiller 1 power loss alarm",
+      "units": "no-units",
+      "signal_direction": "alarm_fault",
+      "writable": false,
+      "initial_value": 0,
+      "update_interval_seconds": 1
+    },
+    {
+      "alias": "ch2_power_loss",
+      "object_type": "binary-input",
+      "object_instance": 41,
+      "object_name": "CHW-PLANT CH 2 Power Loss",
+      "description": "Simulated chiller 2 power loss alarm",
+      "units": "no-units",
+      "signal_direction": "alarm_fault",
+      "writable": false,
+      "initial_value": 0,
+      "update_interval_seconds": 1
+    },
+    {
+      "alias": "ch3_power_loss",
+      "object_type": "binary-input",
+      "object_instance": 42,
+      "object_name": "CHW-PLANT CH 3 Power Loss",
+      "description": "Simulated chiller 3 power loss alarm",
+      "units": "no-units",
+      "signal_direction": "alarm_fault",
+      "writable": false,
+      "initial_value": 0,
+      "update_interval_seconds": 1
+    },
+    {
+      "alias": "chiller1_ok",
+      "object_type": "binary-input",
+      "object_instance": 43,
+      "object_name": "CHW-PLANT Chiller 1 OK",
+      "description": "Plant-level mirror of Chiller-1's own status (separate BACnet address per Jeff's correction)",
+      "units": "no-units",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "initial_value": 0,
+      "update_interval_seconds": 1
+    },
+    {
+      "alias": "chiller2_ok",
+      "object_type": "binary-input",
+      "object_instance": 44,
+      "object_name": "CHW-PLANT Chiller 2 OK",
+      "description": "Plant-level mirror of Chiller-2's own status",
+      "units": "no-units",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "initial_value": 0,
+      "update_interval_seconds": 1
+    },
+    {
+      "alias": "chiller3_ok",
+      "object_type": "binary-input",
+      "object_instance": 45,
+      "object_name": "CHW-PLANT Chiller 3 OK",
+      "description": "Plant-level mirror of Chiller-3's own status",
+      "units": "no-units",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "initial_value": 0,
+      "update_interval_seconds": 1
+    },
+    {
+      "alias": "chwr_temp_common",
+      "object_type": "analog-input",
+      "object_instance": 1,
+      "object_name": "CHW-PLANT CHWR Temp",
+      "description": "Common chilled-water-return header temperature",
+      "units": "degrees-fahrenheit",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "initial_value": 54.0,
+      "minimum": 32.0,
+      "maximum": 90.0,
+      "update_interval_seconds": 1,
+      "cov_increment": 0.5,
+      "normal_range": {
+        "low": 50.0,
+        "high": 58.0
+      }
+    },
+    {
+      "alias": "chws_flow_common",
+      "object_type": "analog-input",
+      "object_instance": 2,
+      "object_name": "CHW-PLANT CHWS Flow",
+      "description": "Common chilled-water-supply header flow",
+      "units": "gallons-per-minute",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "initial_value": 0.0,
+      "minimum": 0.0,
+      "maximum": 500.0,
+      "update_interval_seconds": 1,
+      "cov_increment": 2.0
+    },
+    {
+      "alias": "chws_temp_common",
+      "object_type": "analog-input",
+      "object_instance": 3,
+      "object_name": "CHW-PLANT CHWS Temp",
+      "description": "Common chilled-water-supply header temperature",
+      "units": "degrees-fahrenheit",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "initial_value": 44.0,
+      "minimum": 32.0,
+      "maximum": 90.0,
+      "update_interval_seconds": 1,
+      "cov_increment": 0.5,
+      "normal_range": {
+        "low": 42.0,
+        "high": 48.0
+      }
+    },
+    {
+      "alias": "remote_shutdown",
+      "object_type": "binary-output",
+      "object_instance": 60,
+      "object_name": "CHW-PLANT Remote Shutdown",
+      "description": "Plant-wide remote shutdown command",
+      "units": "no-units",
+      "signal_direction": "webctrl_to_sim",
+      "writable": true,
+      "commandable": true,
+      "initial_value": 0,
+      "update_interval_seconds": 1
+    },
+    {
+      "alias": "emerg_shutdown_trip",
+      "object_type": "binary-value",
+      "object_instance": 100,
+      "object_name": "CHW-PLANT Emerg Shutdown Trip",
+      "description": "Real physical Emerg Shutdn safety switch relayed to the simulator -- hard interlock, forces immediate plant shutdown",
+      "units": "no-units",
+      "signal_direction": "webctrl_to_sim",
+      "writable": true,
+      "commandable": true,
+      "initial_value": 0,
+      "update_interval_seconds": 1,
+      "interlock": true
+    },
+    {
+      "alias": "refrig_shutdown_trip",
+      "object_type": "binary-value",
+      "object_instance": 101,
+      "object_name": "CHW-PLANT Refrig Shutdown Trip",
+      "description": "Real physical Refrig Shutdn safety switch relayed to the simulator -- hard interlock, forces immediate plant shutdown",
+      "units": "no-units",
+      "signal_direction": "webctrl_to_sim",
+      "writable": true,
+      "commandable": true,
+      "initial_value": 0,
+      "update_interval_seconds": 1,
+      "interlock": true
+    }
+  ]
+}

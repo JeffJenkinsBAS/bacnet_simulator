@@ -1,0 +1,39 @@
+{
+  "group_id": "ACI-SIM-SITE",
+  "instance_offset": 0,
+  "description": "Outside air conditions, instructor/scenario-adjustable for seasonal training.",
+  "points": [
+    {
+      "alias": "oa_temp",
+      "object_type": "analog-value",
+      "object_instance": 80,
+      "object_name": "SITE Outside Air Temperature",
+      "description": "Simulated outside air temperature, adjustable for seasonal training",
+      "units": "degrees-fahrenheit",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "commandable": false,
+      "initial_value": 70.0,
+      "minimum": -20.0,
+      "maximum": 130.0,
+      "update_interval_seconds": 1,
+      "cov_increment": 0.5
+    },
+    {
+      "alias": "oa_humidity",
+      "object_type": "analog-value",
+      "object_instance": 81,
+      "object_name": "SITE Outside Air Humidity",
+      "description": "Simulated outside air relative humidity, adjustable for seasonal training",
+      "units": "percent-relative-humidity",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "commandable": false,
+      "initial_value": 50.0,
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "update_interval_seconds": 1,
+      "cov_increment": 1.0
+    }
+  ]
+}
