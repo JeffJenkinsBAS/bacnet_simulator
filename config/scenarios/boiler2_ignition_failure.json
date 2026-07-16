@@ -1,0 +1,51 @@
+{
+  "scenario_id": "boiler2_ignition_failure",
+  "title": "Boiler-2 Commanded On But Fails to Prove",
+  "description": "Boiler Manager stages Boiler-2 on for additional heating demand, but Boiler-2 never proves -- simulating a failed ignition attempt.",
+  "initial_conditions": {
+    "outside_air_temperature": 10,
+    "outside_air_humidity": 30
+  },
+  "events": [
+    {
+      "time_seconds": 0,
+      "action": "set_fault",
+      "equipment": "ACI-SIM-BOILER-2",
+      "alias": "boiler_ok",
+      "fault": "forced_status",
+      "value": false,
+      "description": "Boiler-2's proof output is forced permanently off regardless of the normal purge/ignition timing"
+    },
+    {
+      "time_seconds": 30,
+      "action": "set_value",
+      "equipment": "ACI-SIM-BOILER-MGR",
+      "alias": "enable_boiler2",
+      "value": true,
+      "description": "Boiler Manager stages Boiler-2 on for additional demand"
+    },
+    {
+      "time_seconds": 30,
+      "action": "set_value",
+      "equipment": "ACI-SIM-BOILER-2",
+      "alias": "boiler_ss",
+      "value": true,
+      "description": "Boiler-2 start/stop commanded on"
+    }
+  ],
+  "expected_results": [
+    "Boiler Manager's Enable Boiler2 command and Boiler-2's own Boiler S/S command both show on",
+    "Boiler-2 OK never transitions to proven, even well past the normal purge+ignition delay",
+    "WebCTRL should eventually alarm on failed-to-prove, matching how a real ignition lockout would present",
+    "Boiler-1 and Boiler-3 are unaffected -- this is isolated to one unit"
+  ],
+  "completion_criteria": [
+    "Student recognizes the failure pattern (commanded on, never proves) rather than assuming a comms failure",
+    "Student checks the other two boilers to confirm this is unit-specific, not a Boiler Manager problem"
+  ],
+  "instructor_notes": "The fault is armed before the command sequence starts, so there's no race condition in how the scenario fires relative to Boiler Manager's own staging logic in WebCTRL.",
+  "student_objectives": [
+    "Diagnose a failed-to-prove condition on a specific piece of staged equipment",
+    "Correctly scope the problem to one unit rather than the whole boiler plant"
+  ]
+}

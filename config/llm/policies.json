@@ -1,0 +1,27 @@
+{
+  "_note": "This file documents the current policy for humans reading the config directory. The ACTUAL enforcement is PHASE_6A_ALLOWED_INTENTS / PHASE_6A_ALLOWED_ACTION_TYPES in app/llm/action_validator.py -- this JSON is not currently loaded or read by the application. Keeping it here as the shape a future Settings/Diagnostics GUI could read from once that's built (see HANDOFF.md Phase 6b), rather than inventing a config-loading mechanism for a single boolean-ish list that doesn't have a consumer yet.",
+  "phase": "6a",
+  "allowed_intents": [
+    "create_scenario",
+    "inject_fault",
+    "clear_fault",
+    "adjust_simulation_parameter",
+    "explain_behavior",
+    "summarize_events"
+  ],
+  "allowed_action_types": [
+    "create_scenario",
+    "set_initial_condition",
+    "inject_fault",
+    "clear_fault",
+    "adjust_parameter",
+    "annotate_logs"
+  ],
+  "explicitly_disallowed_until_phase_6d": [
+    "add_equipment",
+    "modify_equipment",
+    "remove_equipment",
+    "set_network_condition"
+  ],
+  "requires_approval_default": true
+}

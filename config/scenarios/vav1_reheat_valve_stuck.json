@@ -1,0 +1,41 @@
+{
+  "scenario_id": "vav1_reheat_valve_stuck",
+  "title": "VAV-1 Reheat Valve Commanded But Mechanically Stuck",
+  "description": "WebCTRL commands VAV-1's reheat valve normally, and the real object shows the new command was received -- but the valve actuator has physically seized, so discharge air temperature never responds.",
+  "initial_conditions": {
+    "outside_air_temperature": 45,
+    "outside_air_humidity": 55
+  },
+  "events": [
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-AHU-1",
+      "alias": "sa_fan_ss",
+      "value": true,
+      "description": "AHU-1 supply fan on for airflow to exist at VAV-1"
+    },
+    {
+      "time_seconds": 30,
+      "action": "set_fault",
+      "equipment": "ACI-SIM-VAV-1",
+      "alias": "hw_valve_command",
+      "fault": "stuck_value",
+      "description": "Reheat valve actuator seizes at whatever position it's at right now -- WebCTRL's commands still land on the real BACnet object, the actuator just doesn't move"
+    }
+  ],
+  "expected_results": [
+    "The HW Valve object itself keeps accepting new WriteProperty commands from WebCTRL and shows the commanded value changing",
+    "VAV-1 Discharge Temp stops responding to those commands and holds near whatever it was when the fault activated",
+    "A student comparing 'commanded' vs 'actual discharge temp' should see the mismatch even though the point looks normal on a quick glance"
+  ],
+  "completion_criteria": [
+    "Student identifies that the command point and the resulting physical behavior have diverged, rather than assuming the valve command itself is wrong",
+    "Student proposes a field verification step (e.g. checking actuator position manually) rather than only re-checking software"
+  ],
+  "instructor_notes": "This fault does NOT change what WebCTRL reads back from the HW Valve object -- that's intentional. The point of this exercise is to teach that a healthy-looking command point doesn't guarantee the field device is actually responding.",
+  "student_objectives": [
+    "Distinguish a software/network problem from a mechanical actuator failure using only available BACnet points",
+    "Understand why 'the point shows the right value' isn't proof the equipment did what was commanded"
+  ]
+}

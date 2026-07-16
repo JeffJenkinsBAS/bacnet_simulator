@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ACI BACnet Building Simulation Platform</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; background: #14171c; color: #e6e9ee; margin: 0; padding: 24px; }
+  h1 { font-size: 20px; margin: 0 0 4px 0; }
+  .subtitle { color: #8b95a5; margin-bottom: 20px; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+  .card { background: #1c2028; border: 1px solid #2a2f3a; border-radius: 8px; padding: 16px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #8b95a5; margin: 0 0 12px 0; }
+  .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; border-bottom: 1px solid #23272f; }
+  .row:last-child { border-bottom: none; }
+  .label { color: #8b95a5; }
+  .value { font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pill.running { background: #16352a; color: #4ade80; }
+  .pill.stopped { background: #3a1f1f; color: #f87171; }
+  .pill.lab { background: #1f2d3a; color: #60a5fa; }
+  button, select, input { background: #2563eb; color: white; border: none; padding: 8px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; margin-right: 8px; }
+  select, input { background: #0e1116; border: 1px solid #2a2f3a; color: #e6e9ee; cursor: default; }
+  button.stop { background: #dc2626; }
+  button:hover { opacity: 0.9; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #23272f; }
+  th { color: #8b95a5; font-weight: 600; text-transform: uppercase; font-size: 10.5px; position: sticky; top: 0; background: #1c2028; }
+  .dir-sim { color: #4ade80; }
+  .dir-webctrl { color: #60a5fa; }
+  .interlock { color: #f87171; font-weight: 700; }
+  .fault-badge { color: #fbbf24; font-weight: 700; }
+  .forced-badge { color: #a78bfa; font-weight: 700; }
+  .table-scroll { max-height: 480px; overflow-y: auto; }
+  .log-box { background: #0e1116; border-radius: 6px; padding: 10px; height: 220px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 11.5px; color: #b7c0cf; white-space: pre-wrap; }
+  .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #2a2f3a; }
+  .tab-btn { background: transparent; color: #8b95a5; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 16px; font-size: 13px; cursor: pointer; margin: 0; }
+  .tab-btn.active { color: #e6e9ee; border-bottom-color: #2563eb; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .scenario-card { background: #171b22; border: 1px solid #2a2f3a; border-radius: 8px; padding: 12px; margin-bottom: 8px; }
+  .scenario-card h3 { margin: 0 0 6px 0; font-size: 14px; }
+  .scenario-card p { margin: 0 0 8px 0; font-size: 12.5px; color: #8b95a5; }
+  .fault-row { display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #171b22; border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
+  .danger-zone { border: 1px solid #dc2626; border-radius: 8px; padding: 14px; margin-bottom: 20px; background: #1e1315; }
+</style>
+</head>
+<body>
+  <h1>ACI BACnet Building Simulation Platform</h1>
+  <div class="subtitle">Phase 4 — Scenario Library &amp; Instructor Panel · <span id="fleet-summary">-</span></div>
+
+  <div class="danger-zone">
+    <div class="toolbar" style="margin-bottom:0;">
+      <strong style="margin-right:12px;">Instructor Emergency Control</strong>
+      <button class="stop" onclick="stopAllSimulation()">STOP ALL SIMULATION (clears every fault, force, and running scenario)</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="showTab('dashboard', this)">Dashboard</button>
+    <button class="tab-btn" onclick="showTab('points', this)">Equipment &amp; Points</button>
+    <button class="tab-btn" onclick="showTab('instructor', this)">Instructor Panel</button>
+    <button class="tab-btn" onclick="showTab('llm', this)">LLM Console</button>
+    <button class="tab-btn" onclick="showTab('logs', this)">Logs</button>
+  </div>
+
+  <div id="tab-dashboard" class="tab-panel active">
+  <div class="grid">
+    <div class="card">
+      <h2>Simulation</h2>
+      <div class="row"><span class="label">Status</span><span class="value"><span id="sim-pill" class="pill stopped">stopped</span></span></div>
+      <div class="row"><span class="label">Simulated time elapsed</span><span class="value" id="sim-elapsed">-</span></div>
+      <div class="row"><span class="label">Tick count</span><span class="value" id="sim-ticks">-</span></div>
+      <div style="margin-top:12px;">
+        <button onclick="startSim()">Start</button>
+        <button class="stop" onclick="stopSim()">Stop Engine</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Network</h2>
+      <div class="row"><span class="label">BACnet device</span><span class="value" id="net-device">-</span></div>
+      <div class="row"><span class="label">Bind address</span><span class="value" id="net-bind">-</span></div>
+      <div class="row"><span class="label">Mode</span><span class="value"><span class="pill lab" id="net-lab">-</span></span></div>
+      <div class="row"><span class="label">Equipment groups</span><span class="value" id="net-devices">-</span></div>
+      <div class="row"><span class="label">Total BACnet objects</span><span class="value" id="net-points">-</span></div>
+      <div class="row"><span class="label">Messages received</span><span class="value" id="net-msgs">-</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Site Conditions</h2>
+      <div class="toolbar">
+        <label>OA Temp (&deg;F)</label>
+        <input type="number" id="oa-temp-input" value="70" style="width:70px;">
+        <label>OA Humidity (%)</label>
+        <input type="number" id="oa-humidity-input" value="50" style="width:60px;">
+        <button onclick="setWeather()">Apply</button>
+      </div>
+      <div class="row"><span class="label">Note</span><span class="value" style="color:#8b95a5;font-size:12px;">Instructor-adjustable, transitions smoothly rather than jumping</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Active Scenario</h2>
+    <div id="scenario-status-dashboard" class="row"><span class="label">None running</span></div>
+  </div>
+  </div><!-- /tab-dashboard -->
+
+  <div id="tab-points" class="tab-panel">
+  <div class="card" style="margin-bottom:20px;">
+    <h2>Equipment Groups <span style="color:#8b95a5;font-weight:400;text-transform:none;font-size:11px;">(organizational only — all one BACnet device on 47808)</span></h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Group</th><th>Instance Offset</th><th>Points</th><th>Description</th></tr></thead>
+        <tbody id="devices-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <h2>Live Points</h2>
+    <div class="toolbar">
+      <label>Filter by group</label>
+      <select id="device-filter" onchange="refresh()"><option value="">All groups</option></select>
+    </div>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Group</th><th>Point</th><th>BACnet Object</th><th>Direction</th><th>Value</th><th>Units</th><th>Status</th></tr></thead>
+        <tbody id="points-body"></tbody>
+      </table>
+    </div>
+  </div>
+  </div><!-- /tab-points -->
+
+  <div id="tab-instructor" class="tab-panel">
+  <div class="grid" style="grid-template-columns: 1fr 1fr;">
+    <div class="card">
+      <h2>Scenarios</h2>
+      <div id="scenario-status-panel" class="scenario-card" style="display:none;"></div>
+      <div id="scenario-list"></div>
+    </div>
+
+    <div class="card">
+      <h2>Manual Fault Injection</h2>
+      <div class="toolbar">
+        <select id="fault-group"><option value="">(transport-level, whole device)</option></select>
+        <input type="text" id="fault-alias" placeholder="point alias (e.g. chws_temp)" list="fault-alias-options" style="width:180px;">
+        <datalist id="fault-alias-options"></datalist>
+      </div>
+      <div class="toolbar">
+        <select id="fault-type"></select>
+        <input type="number" id="fault-value" placeholder="value" style="width:80px;">
+        <input type="number" id="fault-rate" placeholder="rate/sec (drift only)" style="width:120px;">
+        <button onclick="applyFault()">Activate Fault</button>
+      </div>
+      <div class="row"><span class="label" style="font-size:11.5px;">Value = offset amount, stuck/forced value (1/0 for booleans), or reliability_fail reading. Rate/sec only applies to drift.</span></div>
+      <h3 style="font-size:12px;color:#8b95a5;margin:14px 0 6px 0;">Active Faults</h3>
+      <div id="active-faults-list"></div>
+      <button onclick="clearAllFaults()" style="margin-top:8px;background:#b45309;">Clear All Faults</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Force / Release Value</h2>
+    <div class="toolbar">
+      <select id="force-group"></select>
+      <input type="text" id="force-alias" placeholder="point alias" list="force-alias-options" style="width:180px;">
+      <datalist id="force-alias-options"></datalist>
+      <input type="text" id="force-value" placeholder="value (number or true/false)" style="width:160px;">
+      <button onclick="forceValue()">Force</button>
+      <button onclick="releaseValue()" style="background:#4b5563;">Release</button>
+    </div>
+    <div class="row"><span class="label" style="font-size:11.5px;">Writable points get a real BACnet write (priority 3); non-writable sensor points use a stuck-value output override instead.</span></div>
+  </div>
+  </div><!-- /tab-instructor -->
+
+  <div id="tab-llm" class="tab-panel">
+  <div class="grid" style="grid-template-columns: 1fr 1fr;">
+    <div class="card">
+      <h2>Ollama Connection</h2>
+      <div class="row"><span class="label">Status</span><span class="value"><span id="llm-status-pill" class="pill stopped">checking...</span></span></div>
+      <div class="row"><span class="label">Host</span><span class="value" id="llm-host">-</span></div>
+      <div class="row"><span class="label">Configured model</span><span class="value" id="llm-model">-</span></div>
+      <div class="row"><span class="label">Available models</span><span class="value" id="llm-available-models">-</span></div>
+      <div style="margin-top:10px;"><button onclick="refreshLlmStatus()">Test Connection</button></div>
+    </div>
+    <div class="card">
+      <h2>Scope (Phase 6a)</h2>
+      <div class="row"><span class="label" style="font-size:12px;">
+        This console can create scenarios, inject/clear faults, adjust site weather, and explain
+        simulator behavior -- all through the same code paths as the Instructor Panel. It cannot
+        add, modify, or remove simulated equipment, and cannot issue direct BACnet commands.
+        Every proposal is previewed here before anything is applied.
+      </span></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px;">
+    <h2>Ask the Assistant</h2>
+    <div class="toolbar">
+      <textarea id="llm-prompt" placeholder="e.g. Create a scenario where Chiller-2's CHWS sensor drifts high over 3 minutes after it's been running for a minute" style="width:100%;min-height:70px;background:#0e1116;border:1px solid #2a2f3a;color:#e6e9ee;border-radius:6px;padding:10px;font-family:inherit;"></textarea>
+    </div>
+    <div class="toolbar">
+      <button onclick="proposeLlmAction()">Propose</button>
+      <span id="llm-propose-status" style="color:#8b95a5;font-size:12px;"></span>
+    </div>
+  </div>
+
+  <div id="llm-preview-card" class="card" style="margin-bottom:20px;display:none;">
+    <h2>Proposed Action <span id="llm-valid-pill" class="pill"></span></h2>
+    <div id="llm-preview-body"></div>
+    <div class="toolbar" style="margin-top:10px;">
+      <button id="llm-approve-btn" onclick="applyLlmAction()">Approve &amp; Apply</button>
+      <button onclick="dismissLlmPreview()" style="background:#4b5563;">Dismiss</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Audit Trail</h2>
+    <div class="table-scroll">
+      <table>
+        <thead><tr><th>Time</th><th>Event</th><th>Request</th><th>Detail</th></tr></thead>
+        <tbody id="llm-audit-body"></tbody>
+      </table>
+    </div>
+  </div>
+  </div><!-- /tab-llm -->
+
+  <div id="tab-logs" class="tab-panel">
+  <div class="grid" style="grid-template-columns: 1fr 1fr;">
+    <div class="card">
+      <h2>Application Log</h2>
+      <div class="log-box" id="log-app"></div>
+    </div>
+    <div class="card">
+      <h2>BACnet Traffic</h2>
+      <div class="log-box" id="log-bacnet"></div>
+    </div>
+  </div>
+  </div><!-- /tab-logs -->
+
+<script>
+let deviceListPopulated = false;
+let selectorsPopulated = false;
+let pointsByGroup = {}; // group_id -> [alias, ...] for datalist population
+
+async function fetchJSON(url, opts) {
+  const r = await fetch(url, opts);
+  return await r.json();
+}
+
+function dirClass(d) {
+  return d === 'sim_to_webctrl' ? 'dir-sim' : (d === 'webctrl_to_sim' ? 'dir-webctrl' : '');
+}
+function dirLabel(d) {
+  return { sim_to_webctrl: 'sim -> WebCTRL', webctrl_to_sim: 'WebCTRL -> sim' }[d] || d;
+}
+
+function showTab(name, btn) {
+  document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  btn.classList.add('active');
+}
+
+function renderScenarioStatus(scenario, targetId) {
+  const el = document.getElementById(targetId);
+  if (!scenario.running && scenario.status !== 'completed') {
+    if (targetId === 'scenario-status-panel') { el.style.display = 'none'; }
+    else { el.innerHTML = '<span class="label">None running</span>'; }
+    return;
+  }
+  if (targetId === 'scenario-status-panel') el.style.display = 'block';
+  const next = scenario.next_event
+    ? `Next event at t+${scenario.next_event.time_seconds}s: ${scenario.next_event.description}`
+    : 'All events fired';
+  el.innerHTML = `
+    <h3>${scenario.title || scenario.scenario_id} <span class="pill ${scenario.status === 'running' ? 'running' : 'stopped'}">${scenario.status}</span></h3>
+    <p>Elapsed: ${scenario.elapsed_seconds}s &middot; Events: ${scenario.events_fired}/${scenario.events_total}</p>
+    <p>${next}</p>
+  `;
+}
+
+async function refresh() {
+  try {
+    const status = await fetchJSON('/api/status');
+    document.getElementById('fleet-summary').textContent =
+      status.fleet.group_count + ' equipment groups · ' + status.fleet.total_point_count + ' BACnet objects · ' +
+      status.active_fault_count + ' active fault' + (status.active_fault_count === 1 ? '' : 's');
+    document.getElementById('sim-pill').textContent = status.simulation.running ? 'running' : 'stopped';
+    document.getElementById('sim-pill').className = 'pill ' + (status.simulation.running ? 'running' : 'stopped');
+    document.getElementById('sim-elapsed').textContent = status.simulation.simulated_seconds_elapsed + ' s';
+    document.getElementById('sim-ticks').textContent = status.simulation.tick_count;
+    document.getElementById('net-device').textContent = status.device.name + ' (instance ' + status.device.instance + ', port ' + status.device.udp_port + ')';
+    document.getElementById('net-bind').textContent = status.device.bind_address;
+    document.getElementById('net-lab').textContent = status.device.private_lab_mode ? 'PRIVATE LAB MODE' : 'open';
+    document.getElementById('net-devices').textContent = status.fleet.group_count;
+    document.getElementById('net-points').textContent = status.fleet.total_point_count;
+    document.getElementById('net-msgs').textContent = status.bacnet.messages_in;
+
+    renderScenarioStatus(status.scenario, 'scenario-status-dashboard');
+    renderScenarioStatus(status.scenario, 'scenario-status-panel');
+
+    const devBody = document.getElementById('devices-body');
+    devBody.innerHTML = '';
+    for (const g of status.groups) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${g.group_id}</td><td>${g.instance_offset}</td><td>${g.point_count}</td><td style="color:#8b95a5;">${g.description}</td>`;
+      devBody.appendChild(tr);
+    }
+
+    if (!deviceListPopulated) {
+      const sel = document.getElementById('device-filter');
+      for (const g of status.groups) {
+        const opt = document.createElement('option');
+        opt.value = g.group_id; opt.textContent = g.group_id;
+        sel.appendChild(opt);
+      }
+      deviceListPopulated = true;
+    }
+
+    if (!selectorsPopulated) {
+      for (const selId of ['fault-group', 'force-group']) {
+        const sel = document.getElementById(selId);
+        for (const g of status.groups) {
+          const opt = document.createElement('option');
+          opt.value = g.group_id; opt.textContent = g.group_id;
+          sel.appendChild(opt);
+        }
+      }
+      const faultTypes = await fetchJSON('/api/fault-types');
+      const ftSel = document.getElementById('fault-type');
+      for (const t of faultTypes) {
+        const opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        ftSel.appendChild(opt);
+      }
+      const scenarios = await fetchJSON('/api/scenarios');
+      const listEl = document.getElementById('scenario-list');
+      listEl.innerHTML = '';
+      for (const s of scenarios) {
+        const div = document.createElement('div');
+        div.className = 'scenario-card';
+        div.innerHTML = `
+          <h3>${s.title}</h3>
+          <p>${s.description}</p>
+          <p><em>${s.event_count} timed event(s)</em></p>
+          <button onclick="startScenario('${s.scenario_id}')">Run</button>
+        `;
+        listEl.appendChild(div);
+      }
+      document.getElementById('scenario-list').insertAdjacentHTML('afterbegin',
+        '<div class="toolbar"><button onclick="stopScenario()" style="background:#4b5563;">Stop</button><button onclick="resetScenario()" style="background:#b45309;">Reset (clears faults too)</button></div>');
+      selectorsPopulated = true;
+    }
+
+    // fetch all points once to build the alias datalists and the fault-aware points table
+    const allPoints = await fetchJSON('/api/points');
+    pointsByGroup = {};
+    for (const p of allPoints) {
+      (pointsByGroup[p.group] = pointsByGroup[p.group] || []).push(p.alias);
+    }
+
+    const groupFilter = document.getElementById('device-filter').value;
+    const points = groupFilter ? allPoints.filter(p => p.group === groupFilter) : allPoints;
+    const tbody = document.getElementById('points-body');
+    tbody.innerHTML = '';
+    for (const p of points) {
+      const tr = document.createElement('tr');
+      let nameCell = p.object_name;
+      if (p.interlock) nameCell = `<span class="interlock">${nameCell} (INTERLOCK)</span>`;
+      let statusCell = '';
+      if (p.forced) statusCell += '<span class="forced-badge">FORCED</span> ';
+      for (const ft of p.active_faults) {
+        if (!(p.forced && ft === 'stuck_value')) statusCell += `<span class="fault-badge">${ft}</span> `;
+      }
+      tr.innerHTML = `<td>${p.group}</td><td>${nameCell}</td><td>${p.object_type}:${p.object_instance}</td>
+        <td class="${dirClass(p.direction)}">${dirLabel(p.direction)}</td>
+        <td>${Number(p.present_value).toFixed(1)}</td><td>${p.units}</td><td>${statusCell}</td>`;
+      tbody.appendChild(tr);
+    }
+
+    const faults = await fetchJSON('/api/faults');
+    const faultsListEl = document.getElementById('active-faults-list');
+    faultsListEl.innerHTML = faults.length ? '' : '<div class="row"><span class="label">No active faults</span></div>';
+    for (const f of faults) {
+      const div = document.createElement('div');
+      div.className = 'fault-row';
+      const target = f.alias ? `${f.group_id}.${f.alias}` : '(transport-level)';
+      div.innerHTML = `<span>${f.fault_type} on <strong>${target}</strong>${f.is_manual_force ? ' <em>(force)</em>' : ''}</span>
+        <button onclick="clearFault('${f.fault_id}')" style="background:#4b5563;">Clear</button>`;
+      faultsListEl.appendChild(div);
+    }
+
+    const appLog = await fetchJSON('/api/logs/app?limit=60');
+    document.getElementById('log-app').textContent = appLog.join('\n');
+    const bacnetLog = await fetchJSON('/api/logs/bacnet?limit=60');
+    document.getElementById('log-bacnet').textContent = bacnetLog.join('\n');
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function updateAliasOptions(groupSelectId, datalistId) {
+  const group = document.getElementById(groupSelectId).value;
+  const dl = document.getElementById(datalistId);
+  dl.innerHTML = '';
+  for (const alias of (pointsByGroup[group] || [])) {
+    const opt = document.createElement('option');
+    opt.value = alias;
+    dl.appendChild(opt);
+  }
+}
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('fault-group').addEventListener('change', () => updateAliasOptions('fault-group', 'fault-alias-options'));
+  document.getElementById('force-group').addEventListener('change', () => updateAliasOptions('force-group', 'force-alias-options'));
+});
+
+async function startSim() { await fetchJSON('/api/simulation/start', {method: 'POST'}); refresh(); }
+async function stopSim() { await fetchJSON('/api/simulation/stop', {method: 'POST'}); refresh(); }
+async function stopAllSimulation() {
+  if (!confirm('Stop simulation and clear every active fault, force, and running scenario?')) return;
+  await fetchJSON('/api/simulation/stop-all', {method: 'POST'});
+  refresh();
+}
+async function setWeather() {
+  const t = document.getElementById('oa-temp-input').value;
+  const h = document.getElementById('oa-humidity-input').value;
+  await fetchJSON(`/api/site/weather?oa_temp_f=${t}&oa_humidity_pct=${h}`, {method: 'POST'});
+  refresh();
+}
+
+async function applyFault() {
+  const group_id = document.getElementById('fault-group').value || null;
+  const alias = document.getElementById('fault-alias').value || null;
+  const fault_type = document.getElementById('fault-type').value;
+  const valueStr = document.getElementById('fault-value').value;
+  const rateStr = document.getElementById('fault-rate').value;
+  const parameters = {};
+  if (valueStr !== '') parameters.value = Number(valueStr);
+  if (rateStr !== '') parameters.rate_per_second = Number(rateStr);
+  await fetchJSON('/api/faults/set', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ fault_type, group_id, alias, parameters }),
+  });
+  refresh();
+}
+async function clearFault(fault_id) {
+  await fetchJSON(`/api/faults/clear?fault_id=${encodeURIComponent(fault_id)}`, {method: 'POST'});
+  refresh();
+}
+async function clearAllFaults() {
+  await fetchJSON('/api/faults/clear-all', {method: 'POST'});
+  refresh();
+}
+
+function parseForceValue(raw) {
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  const n = Number(raw);
+  return isNaN(n) ? raw : n;
+}
+async function forceValue() {
+  const group_id = document.getElementById('force-group').value;
+  const alias = document.getElementById('force-alias').value;
+  const value = parseForceValue(document.getElementById('force-value').value);
+  await fetchJSON('/api/force', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ group_id, alias, value }),
+  });
+  refresh();
+}
+async function releaseValue() {
+  const group_id = document.getElementById('force-group').value;
+  const alias = document.getElementById('force-alias').value;
+  await fetchJSON('/api/release', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ group_id, alias }),
+  });
+  refresh();
+}
+
+async function startScenario(id) { await fetchJSON(`/api/scenarios/${id}/start`, {method: 'POST'}); refresh(); }
+async function stopScenario() { await fetchJSON('/api/scenarios/stop', {method: 'POST'}); refresh(); }
+async function resetScenario() { await fetchJSON('/api/scenarios/reset', {method: 'POST'}); refresh(); }
+
+// ---- Phase 6a: LLM Console ------------------------------------------------
+let lastProposedBundle = null;
+
+async function refreshLlmStatus() {
+  document.getElementById('llm-status-pill').textContent = 'checking...';
+  try {
+    const s = await fetchJSON('/api/llm/status');
+    document.getElementById('llm-status-pill').textContent = s.connected ? 'connected' : 'not reachable';
+    document.getElementById('llm-status-pill').className = 'pill ' + (s.connected ? 'running' : 'stopped');
+    document.getElementById('llm-host').textContent = s.host;
+    document.getElementById('llm-model').textContent = s.configured_model;
+    document.getElementById('llm-available-models').textContent = (s.available_models || []).join(', ') || (s.error || 'none found');
+  } catch (e) {
+    document.getElementById('llm-status-pill').textContent = 'error';
+    document.getElementById('llm-status-pill').className = 'pill stopped';
+  }
+}
+
+async function refreshLlmAudit() {
+  try {
+    const entries = await fetchJSON('/api/llm/audit?limit=30');
+    const tbody = document.getElementById('llm-audit-body');
+    tbody.innerHTML = '';
+    for (const e of entries.slice().reverse()) {
+      const tr = document.createElement('tr');
+      const time = new Date(e.timestamp * 1000).toLocaleTimeString();
+      const detail = e.error || (e.bundle ? e.bundle.summary : '') || (e.action_results ? JSON.stringify(e.action_results) : '');
+      tr.innerHTML = `<td>${time}</td><td>${e.event_type}</td><td>${e.request_id || ''}</td><td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;">${detail}</td>`;
+      tbody.appendChild(tr);
+    }
+  } catch (e) { /* LLM Console not critical to the main dashboard poll loop */ }
+}
+
+async function proposeLlmAction() {
+  const promptEl = document.getElementById('llm-prompt');
+  const statusEl = document.getElementById('llm-propose-status');
+  const request = promptEl.value.trim();
+  if (!request) return;
+  statusEl.textContent = 'Thinking...';
+  document.getElementById('llm-preview-card').style.display = 'none';
+
+  try {
+    const resp = await fetch('/api/llm/propose', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ instructor_request: request }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      statusEl.textContent = 'Failed: ' + (data.error || 'unknown error');
+      return;
+    }
+    statusEl.textContent = '';
+    renderLlmPreview(data.bundle, data.valid, data.validation_errors);
+  } catch (e) {
+    statusEl.textContent = 'Request failed: ' + e;
+  }
+}
+
+function renderLlmPreview(bundle, valid, errors) {
+  lastProposedBundle = bundle;
+  document.getElementById('llm-preview-card').style.display = 'block';
+  const pill = document.getElementById('llm-valid-pill');
+  pill.textContent = valid ? 'valid' : 'rejected';
+  pill.className = 'pill ' + (valid ? 'running' : 'stopped');
+
+  let html = `<p style="margin:4px 0;"><strong>Intent:</strong> ${bundle.intent} &middot; <strong>Confidence:</strong> ${bundle.confidence}</p>`;
+  html += `<p style="margin:4px 0;">${bundle.summary}</p>`;
+  if (bundle.warnings && bundle.warnings.length) {
+    html += `<p style="color:#fbbf24;margin:4px 0;">Warnings: ${bundle.warnings.join('; ')}</p>`;
+  }
+  if (!valid) {
+    html += `<p style="color:#f87171;margin:4px 0;">Rejected: ${(errors || []).join('; ')}</p>`;
+  }
+  html += '<pre style="background:#0e1116;padding:10px;border-radius:6px;font-size:11.5px;overflow-x:auto;">' +
+    JSON.stringify(bundle.actions, null, 2) + '</pre>';
+  document.getElementById('llm-preview-body').innerHTML = html;
+  document.getElementById('llm-approve-btn').disabled = !valid;
+}
+
+async function applyLlmAction() {
+  if (!lastProposedBundle) return;
+  const resp = await fetch('/api/llm/apply', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ bundle: lastProposedBundle }),
+  });
+  const data = await resp.json();
+  if (data.applied) {
+    dismissLlmPreview();
+    document.getElementById('llm-prompt').value = '';
+    refresh();
+  } else {
+    alert('Apply failed: ' + (data.error || 'unknown error'));
+  }
+  refreshLlmAudit();
+}
+
+function dismissLlmPreview() {
+  lastProposedBundle = null;
+  document.getElementById('llm-preview-card').style.display = 'none';
+}
+
+refreshLlmStatus();
+refreshLlmAudit();
+setInterval(refreshLlmAudit, 5000);
+
+refresh();
+setInterval(refresh, 2500);
+</script>
+</body>
+</html>
