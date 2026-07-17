@@ -1,9 +1,78 @@
-# ACI BACnet Building Simulation Platform — Handoff Document (v2)
+# ACI BACnet Building Simulation Platform — Handoff Document (v3)
 
 Prepared for Jeff Jenkins, Automated Controls Inc. Written to be
 self-contained for a fresh agent session with no prior context — if
 you're picking this up cold, this document plus the codebase itself
 should be enough to continue safely.
+
+---
+
+## 0. Update — 2026-07-17 Session (read this first)
+
+A full working session on Jeff's machine (`JEFF-JENKINS`, which hosts
+WebCTRL 8.0–10.0 installs and is the likely bench laptop) moved the
+project substantially. The repo lives at
+`github.com/JeffJenkinsBAS/bacnet_simulator` (private) and is the source
+of truth — the phase zips in §8 are historical. **Test suite: 55/55.**
+Highlights, roughly in order:
+
+- **Windows batch scripts were broken and are now fixed.** All seven
+  `scripts\windows\*.bat` resolved paths one directory too shallow
+  (`%~dp0\..` from `scripts\windows\` lands in `scripts\`), so
+  `install.bat`/`run.bat`/service install could never have worked. Fixed,
+  plus a new `run_headless.bat` because Task Scheduler provides no working
+  directory. The fixed installer was executed end-to-end on this machine.
+- **A full audit of every equipment model and the BACnet layer** was
+  performed against the `webctrl-skill` domain references —
+  `SIMULATION_AUDIT.md` is the report. **Every HIGH/MEDIUM finding is
+  fixed**: manager groups are now serviced by aggregator models
+  (`equipment/managers.py` — chillerN_ok/boilerN_ok mirrors, live CHW
+  common header, plant remote_shutdown, Boiler Manager enables), VAV
+  reheat discharge is clamped at hot-water temp, cooling-tower physics
+  now track wet-bulb + approach and climb toward a high-head trip when
+  the fan stops, chillers/boilers have flow-proving interlocks, the
+  freezestat closes the OA damper, and `reliability_fail` faults set the
+  real BACnet Reliability property.
+- **CRITICAL Windows bug found and fixed: the deaf BACnet device.** The
+  startup duplicate-instance check broadcast a Who-Is to 127.0.0.255; on
+  Windows that send kills the asyncio UDP transport — socket stays bound,
+  but the app never receives another BACnet packet. Every instance ever
+  launched on this machine had been deaf (`messages_in` permanently 0).
+  The check now skips on loopback binds. Two more live-caught bugs: the
+  engine-start API endpoint corrupted state when called (sync-def
+  threadpool, no event loop — mutating endpoints are now async), and
+  priority-array forces on binary points always raised TypeError (now
+  written as typed `BinaryPV`).
+- **COV is RESOLVED** (was §5's open item): confirmed AND unconfirmed
+  notification delivery verified live, cross-process, on the real port.
+  All three WebCTRL refresh strategies work on every point — polling
+  (refresh < 31 s), UnconfirmedCOV (>= 31 s), ConfirmedCOV (>= 1 min
+  ending :01). `/api/cov/subscriptions` + a dashboard panel show live
+  subscriptions per mode for training. Transport faults and the traffic
+  counter now also intercept ReadPropertyMultiple / WritePropertyMultiple
+  / SubscribeCOV — what WebCTRL actually sends.
+- **Network isolation from the office building-control system.** The
+  office WebCTRL (192.168.45.34, UDP 47808, runs the real office HVAC +
+  lighting, reachable over Wi-Fi) must never see bench traffic. The bench
+  standard is now **UDP 47809** (simulator config changed; Jeff sets the
+  bench WebCTRL's BACnet connection to 47809 himself), plus a new
+  `peer_allowlist` in `config/network.json`: when set, every BACnet
+  request from a non-allowlisted source IP is silently dropped (no reply)
+  and counted in a `messages_blocked` counter shown on the dashboard. On
+  the bench, set it to the laptop's own static IP. **Never move the
+  simulator back to 47808.**
+- **The dashboard was rebuilt twice** (war-room pass, then Apple
+  liquid-glass design per Jeff's preference): glass rail/command bar,
+  capsule controls, engine power toggle, ×1–×60 time-rate control, live
+  point search with value-change flashes, toasts, confirm modals, COV
+  panel, peer-allowlist/blocked-requests readouts, and the ACI round logo
+  (static/logo.png) as the top-left brand mark. Still one self-contained
+  HTML file, offline-safe.
+- **IT/network coordination**: the simulator needs NO MAC/IP of its own —
+  it shares the laptop's NIC. One static IP reservation for the laptop is
+  all IT needs (machine `JEFF-JENKINS`; wired Killer E3100G MAC
+  `D8-BB-C1-F7-89-38`, USB Realtek `E0-EF-25-01-BD-C1`). The wired port
+  already carries a manual 192.168.168.100 — likely the bench subnet.
 
 ---
 
@@ -22,31 +91,32 @@ troubleshooting exercises.
 
 ## 2. Status Right Now
 
-**Phases 1–5 are complete**: architecture, equipment models (AHU, 3
-chillers, 3 boilers, exhaust fan, 5 VAV zones, site conditions), fault
-injection (11 mechanics), scenario engine (6 shipped scenarios), Instructor
-Panel dashboard, and Windows packaging/service scripts. 24 automated tests
-passing. All of it verified against a live running instance during
-development, not just the test suite — see §5.
+**Phases 1–6a complete, plus the 2026-07-17 hardening pass (§0)**:
+architecture, equipment models (AHU, 3 chillers, 3 boilers, exhaust fan,
+5 VAV zones, site conditions, and now 2 plant-manager aggregators), fault
+injection (11 mechanics), scenario engine (6 shipped scenarios), the
+liquid-glass dashboard, LLM orchestration (6a), and Windows
+packaging/service scripts (now actually working — see §0). **55 automated
+tests passing.** Core behavior verified against live BACnet/IP traffic
+across OS processes on this Windows machine, including both COV modes.
 
 **Physical deployment to the bench laptop, in progress:**
-- ✅ Project copied to the laptop.
+- ✅ Project on the laptop, synced with the private GitHub repo
+  (`JeffJenkinsBAS/bacnet_simulator`).
 - ✅ Found and disabled a conflicting service (a previously-purchased SCADA
   Systems BACnet Simulator was squatting on UDP 47808).
-- ✅ **The WebCTRL-vs-simulator port question is resolved: WebCTRL and the
-  simulator share standard UDP 47808 on the same laptop with no conflict.**
-  No port change needed — `config/network.json`'s `udp_port` should stay at
-  the default `47808`, and the standard automatic WebCTRL Discovery
-  workflow applies (no manual SiteBuilder device entry required).
-- ⬜ **Not confirmed complete as of this handoff**: `bind_address` set to
-  the laptop's real NIC IP, Python install check,
-  `install.bat`/`install_offline.bat`, the manual `run.bat` smoke
-  test, the Windows Firewall rule, NSSM service installation, the
-  post-reboot auto-start check, WebCTRL-side Discovery, and the first
-  real read/write smoke test (AHU-1 command → VAV-1 response visible in
-  WebCTRL). **Do not assume these are done — confirm before treating the
-  bench deployment as finished.** The full sequence is in
-  `NEXT_STEPS_INTEGRATION_TESTING.md`.
+- ✅ venv installed via the FIXED `install.bat`; suite green on this machine.
+- ⚠️ **Port decision SUPERSEDED (2026-07-17): the bench now runs on UDP
+  `47809`, not 47808** — the office building-control WebCTRL
+  (192.168.45.34) owns 47808 and must never see bench traffic. Jeff
+  changes the bench WebCTRL's BACnet connection to 47809 himself. The
+  simulator additionally enforces a `peer_allowlist` (see §0).
+- ⬜ **Still not confirmed complete**: `bind_address` set to the laptop's
+  real NIC IP, `peer_allowlist` set to that same IP, the Windows Firewall
+  rule (UDP 47809), NSSM service installation, the post-reboot auto-start
+  check, bench WebCTRL moved to 47809 + Discovery, and the first real
+  read/write smoke test (AHU-1 command → VAV-1 response visible in
+  WebCTRL). The full sequence is in `NEXT_STEPS_INTEGRATION_TESTING.md`.
 
 **Phase 6 direction has been reviewed and phased** (see §7) — a large
 LLM/Ollama orchestration + dashboard upgrade spec was submitted and
@@ -158,11 +228,19 @@ README.md                            Phase-by-phase technical narrative
   BACnet object accepted a new command (showed 90%) while the equipment's
   actual behavior (discharge temp) stayed flat — the exact mismatch the
   scenario exists to teach.
-- BACnet COV subscription **setup/acknowledgment** confirmed working. COV
-  **notification delivery on value change** could not be confirmed working
-  in the time spent on it. Jeff's plan to run low refresh timers (forcing
-  polling) sidesteps this in practice — not fixed, worked around by
-  design choice.
+- **COV fully verified (2026-07-17, supersedes the earlier open item):**
+  subscription, acknowledgment, AND change-driven notification delivery —
+  both **confirmed** and **unconfirmed** modes — proven live across OS
+  processes against the production port, plus covered by automated tests
+  (`tests/test_audit_fixes_and_cov.py`). All three WebCTRL refresh
+  strategies are usable on every point.
+- **Single-point connection enforcement**: a non-allowlisted source gets
+  pure silence (no reply, counted in `messages_blocked`) while an
+  allowlisted one reads normally — verified live and by test.
+- The audit-fix behaviors (flow-proving interlocks, tower high-head
+  climb, VAV reheat clamp, manager mirrors, reliability flagging) each
+  carry a dedicated test; the manager mirrors and COV panel were also
+  exercised against the live running instance.
 
 ---
 
@@ -171,14 +249,17 @@ README.md                            Phase-by-phase technical narrative
 | Item | Status |
 |---|---|
 | Supervisory device instance 242000 | Proposed default, **not confirmed** by Jeff |
-| COV notification delivery | Subscribe/ack confirmed; notification-on-change not confirmed working |
+| ~~COV notification delivery~~ | **RESOLVED 2026-07-17** — both modes verified live + tested; see §0/§5 |
 | Duplicate BACnet instance / incorrect network number / incorrect units faults | Not implemented — flagged in `faults.py`'s docstring |
 | Occupancy modeling | Not implemented |
 | Completion criteria / student objectives (scenarios) | Informational text only, not auto-graded |
 | "Status Indicator" relay (Simulation Manager) | Assumed out of scope, same category as confirmed-out-of-scope "Safety Trip" — **not explicitly confirmed** the same way |
 | NSSM binary | Not shipped, must be downloaded manually (`tools/nssm/PUT_NSSM_EXE_HERE.txt`) |
-| Windows batch/service scripts | Written and reviewed, execution-tested only as part of the current live deployment |
-| Full bench deployment (Firewall rule → service → reboot → WebCTRL Discovery → smoke test) | **Not confirmed complete** — see §2 |
+| ~~Windows batch/service scripts~~ | **FIXED 2026-07-17** — path bug corrected in all seven; `install.bat` executed end-to-end on this machine; service/scheduled-task install still unexercised |
+| Full bench deployment (bind_address + peer_allowlist → Firewall 47809 → service → reboot → bench WebCTRL to 47809 → Discovery → smoke test) | **Not confirmed complete** — see §2 |
+| Ollama install on this laptop | Still not installed (nothing on 11434) — AI Console reports NOT REACHABLE until then |
+| Duplicate-instance startup check on a real NIC | Skipped on loopback (Windows deaf-device bug, §0); behavior on the bench NIC's real broadcast domain still unverified — if BACnet goes silent after startup on the bench, disable `startup_duplicate_instance_check` first |
+| Minor audit leftovers (audit §2.4/§3.6) | Chiller `chw_iso_valve`/`ct_vfd_output`/`byp_vlv_output`/`manager_reset` ignored by the model; freezestat doesn't self-trip on low MA temp; documented, not wired |
 
 ---
 
@@ -320,9 +401,9 @@ silently ignored or partially handled.
 
 | File | Contents |
 |---|---|
-| ~~`aci-bacnet-sim-phase2.zip`~~ through ~~`aci-bacnet-sim-phase4.zip`~~ | Superseded drafts |
-| ~~`aci-bacnet-sim-phase4-packaging.zip`~~ | Superseded — pre-service-scripts |
-| **`aci-bacnet-sim-phase5-service.zip`** | **Current app baseline.** Full app + fault/scenario library + Instructor Panel + Windows packaging/service scripts |
+| ~~`aci-bacnet-sim-phase2.zip`~~ through ~~`aci-bacnet-sim-phase5-service.zip`~~ | Superseded — historical drafts; do not deploy from zips |
+| **`github.com/JeffJenkinsBAS/bacnet_simulator` (private), `main` branch** | **Current app baseline** — the repo is the single source of truth as of 2026-07-17 |
+| `SIMULATION_AUDIT.md` (in repo) | Full equipment/BACnet audit + fix status |
 | `ACI_BACnet_Simulator_Point_Mapping.xlsx` | Every BACnet object, address, direction, description — generated from live config |
 | `NEXT_STEPS_INTEGRATION_TESTING.md` | Bench laptop deployment step sequence |
 | `PACKAGING.md` (inside the zip) | Full install/firewall/service/troubleshooting reference |
@@ -333,16 +414,23 @@ silently ignored or partially handled.
 
 ## 9. Immediate Next Steps
 
-1. **Confirm the remaining Phase 5 deployment items in §2 are actually
-   done** — if not, finish `NEXT_STEPS_INTEGRATION_TESTING.md` first,
-   ending with the AHU-1/VAV-1 smoke test visible in both WebCTRL and the
-   simulator dashboard.
-2. **On the actual laptop, install Ollama and pull a model**, then use the
-   LLM Console's connection test to confirm `/api/llm/status` reports
-   `connected: true` — this is the first real-world verification the dev
-   sandbox couldn't do (see §7.5).
-3. Once both of those are confirmed, Phase 6b (dashboard tab/panel
-   expansion, minus Trends & Alarms) is the next reasonable slice, or
-   start using Phase 6a for real — it's functional now.
-4. Do not start Phase 6d (dynamic equipment management) until the five
+1. **Finish the bench deployment** per `NEXT_STEPS_INTEGRATION_TESTING.md`
+   (updated for 47809): set `bind_address` AND `peer_allowlist` to the
+   laptop's static IP once IT reserves it, add the UDP 47809 firewall
+   rule, move the bench WebCTRL's BACnet connection to 47809, install the
+   service, reboot, run Discovery, and finish with the AHU-1 → VAV-1
+   smoke test visible in both WebCTRL and the dashboard. Watch the
+   dashboard's Blocked-requests counter and the COV Subscriptions panel
+   during Discovery — they now tell you exactly what WebCTRL is doing.
+2. **Verify the duplicate-instance startup check behaves on the real
+   bench NIC** (see §6) — first boot on the bench, confirm `messages_in`
+   climbs during Discovery; if BACnet is silent, disable the check and
+   report back.
+3. **Install Ollama and pull a model** on this laptop, then use the AI
+   Console's connection test (`/api/llm/status` → `connected: true`) —
+   this also answers Phase 6d open questions #1 and #5.
+4. Then: use Phase 6a for real training, and take Phase 6b's remaining
+   scope (trends/alarms need the 6c historian). The GUI foundation for
+   6b is done (liquid-glass rebuild, §0).
+5. Do not start Phase 6d (dynamic equipment management) until the five
    questions in §7 have real answers — surface them rather than guess.
