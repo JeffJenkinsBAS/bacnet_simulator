@@ -12,7 +12,7 @@ echo  laptop by USB drive, then run install_offline.bat there.
 echo ============================================================
 echo.
 
-cd /d "%~dp0\.."
+cd /d "%~dp0..\.."
 
 where python >nul 2>nul
 if errorlevel 1 (

@@ -6,7 +6,7 @@ echo  Install ACI BACnet Simulator as a Windows Service (NSSM)
 echo ============================================================
 echo.
 
-cd /d "%~dp0\.."
+cd /d "%~dp0..\.."
 
 if not exist venv\Scripts\python.exe (
     echo ERROR: virtual environment not found.

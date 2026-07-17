@@ -1,6 +1,6 @@
 @echo off
 setlocal
-cd /d "%~dp0\.."
+cd /d "%~dp0..\.."
 
 set NSSM=tools\nssm\nssm.exe
 set SERVICE_NAME=ACIBACnetSimulator

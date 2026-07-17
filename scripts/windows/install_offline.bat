@@ -6,7 +6,7 @@ echo  ACI BACnet Building Simulation Platform - Setup (Offline)
 echo ============================================================
 echo.
 
-cd /d "%~dp0\.."
+cd /d "%~dp0..\.."
 
 where python >nul 2>nul
 if errorlevel 1 (

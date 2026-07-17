@@ -1,6 +1,6 @@
 @echo off
 setlocal
-cd /d "%~dp0\.."
+cd /d "%~dp0..\.."
 
 echo ============================================================
 echo  Auto-start via Task Scheduler (fallback, no NSSM needed)
@@ -26,10 +26,9 @@ if not exist venv\Scripts\python.exe (
 
 set TASK_NAME=ACIBACnetSimulator
 set PROJECT_DIR=%cd%
-set PYTHON_EXE=%PROJECT_DIR%\venv\Scripts\python.exe
 
 echo Creating scheduled task "%TASK_NAME%" ...
-schtasks /Create /TN "%TASK_NAME%" /TR "\"%PYTHON_EXE%\" -m app.main" /SC ONSTART /RU SYSTEM /RL HIGHEST /F
+schtasks /Create /TN "%TASK_NAME%" /TR "\"%PROJECT_DIR%\scripts\windows\run_headless.bat\"" /SC ONSTART /RU SYSTEM /RL HIGHEST /F
 
 if errorlevel 1 (
     echo.
