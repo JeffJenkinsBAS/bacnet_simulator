@@ -40,6 +40,7 @@ from app.equipment.ahu import AhuModel, AhuParameters
 from app.equipment.boiler import BoilerModel
 from app.equipment.chiller import ChillerModel
 from app.equipment.exhaust_fan import ExhaustFanModel
+from app.equipment.managers import BoilerManagerModel, ChwPlantManagerModel
 from app.equipment.site import SiteModel
 from app.equipment.vav_single_duct import SingleDuctVavModel, VavParameters
 from app.faults import FaultManager
@@ -78,6 +79,20 @@ def load_all_equipment_groups() -> list[EquipmentGroupConfig]:
 async def check_for_duplicate_instance(transport: BacnetTransport) -> None:
     """Best-effort duplicate device-instance detection -- see Phase 1 architecture, Network Safety."""
     if transport.app is None:
+        return
+    if transport.network_config.bind_address.startswith("127."):
+        # On loopback the /24 broadcast target (127.0.0.255) is meaningless --
+        # no other host can exist -- and on Windows the broadcast SEND poisons
+        # the asyncio datagram transport: the socket stays bound but bacpypes3
+        # never receives another packet ("deaf device", found live 2026-07-17
+        # when every uvicorn-hosted instance ignored all BACnet traffic while
+        # a standalone transport answered fine). Skip; the check still runs on
+        # a real bench NIC.
+        logger.info(
+            "Skipping duplicate device-instance check on loopback bind %s "
+            "(broadcast Who-Is is meaningless there and kills the UDP transport on Windows)",
+            transport.network_config.bind_address,
+        )
         return
     instance = transport.supervisory_config.device_instance
     try:
@@ -119,18 +134,30 @@ def build_equipment(registry: PointRegistry, fault_manager: FaultManager) -> lis
     equipment.append(ExhaustFanModel("ACI-SIM-EF-1", registry.view("ACI-SIM-EF-1", fault_manager=fault_manager)))
 
     plant_view = registry.view("ACI-SIM-CHW-PLANT", fault_manager=fault_manager)
+    chillers = []
     for n in (1, 2, 3):
-        equipment.append(
+        chillers.append(
             ChillerModel(
                 f"ACI-SIM-CHILLER-{n}", registry.view(f"ACI-SIM-CHILLER-{n}", fault_manager=fault_manager),
                 site_registry=site_view, plant_registry=plant_view,
             )
         )
+    equipment.extend(chillers)
 
+    boiler_mgr_view = registry.view("ACI-SIM-BOILER-MGR", fault_manager=fault_manager)
+    boilers = []
     for n in (1, 2, 3):
-        equipment.append(
-            BoilerModel(f"ACI-SIM-BOILER-{n}", registry.view(f"ACI-SIM-BOILER-{n}", fault_manager=fault_manager))
+        boilers.append(
+            BoilerModel(
+                f"ACI-SIM-BOILER-{n}", registry.view(f"ACI-SIM-BOILER-{n}", fault_manager=fault_manager),
+                manager_registry=boiler_mgr_view, manager_enable_alias=f"enable_boiler{n}",
+            )
         )
+    equipment.extend(boilers)
+
+    # Manager aggregators tick AFTER the units they mirror (see managers.py).
+    equipment.append(ChwPlantManagerModel("ACI-SIM-CHW-PLANT", plant_view, chillers))
+    equipment.append(BoilerManagerModel("ACI-SIM-BOILER-MGR", boiler_mgr_view, boilers))
 
     # VAV-1/VAV-2: real physical controllers, no simulated Zone Temp.
     for n in (1, 2):

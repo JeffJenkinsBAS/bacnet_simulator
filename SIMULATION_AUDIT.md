@@ -1,5 +1,33 @@
 # Simulation Control System Audit
 
+> **STATUS UPDATE — 2026-07-17 (same day, later):** every HIGH and MEDIUM finding
+> below is now **FIXED and covered by tests** (see `tests/test_audit_fixes_and_cov.py`,
+> suite 54/54 green). The fix work also caught and fixed **three additional live bugs**
+> the original code review missed, one of them critical:
+>
+> 1. **Deaf BACnet device on Windows (critical).** The startup duplicate-instance
+>    check broadcast a Who-Is to 127.0.0.255; on Windows that loopback-broadcast
+>    SEND silently kills the asyncio UDP transport — the socket stays bound but the
+>    simulator never receives another BACnet packet. Every instance launched on
+>    this laptop had been deaf from birth (`messages_in` permanently 0). The check
+>    now skips on loopback binds (it still runs on a real bench NIC). Cross-process
+>    ReadProperty and both COV modes now verified live against port 47808.
+> 2. **Engine start endpoint corrupted state.** `POST /api/simulation/start` was a
+>    sync `def` running in FastAPI's threadpool, where `asyncio.create_task` raises
+>    — the engine reported running with no loop task. All mutating endpoints are
+>    now `async def`, and `engine.start()` verifies the loop before flipping state.
+> 3. **Instructor/scenario force on binary points never worked.** Priority-array
+>    writes passed a raw string where `PriorityValue` requires a typed `BinaryPV`
+>    (TypeError on every binary force, e.g. the VAV-1 scenario's "fan on" event).
+>
+> **COV delivery (handoff open item) is RESOLVED:** confirmed AND unconfirmed COV
+> notifications verified live, cross-process, on the standard port. All three
+> WebCTRL refresh strategies now work on every point: polling (refresh < 31 s),
+> UnconfirmedCOV (>= 31 s), ConfirmedCOV (>= 1 min ending :01). The dashboard's
+> new COV Subscriptions panel shows live subscriptions per mode for training.
+> Transport faults + traffic counters now also cover ReadPropertyMultiple,
+> WritePropertyMultiple, and SubscribeCOV (WebCTRL's actual poll services).
+
 **Date:** 2026-07-17
 **Method:** Full source review of every equipment model, the transport/registry/fault/scenario
 layers, and all 16 group configs, evaluated against the `webctrl-skill` domain references

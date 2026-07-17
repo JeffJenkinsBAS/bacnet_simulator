@@ -9,6 +9,7 @@ for 6a since 6a's action set doesn't touch the BACnet object model.
 """
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from pathlib import Path
@@ -166,23 +167,29 @@ def create_app(
             )
         )
 
+    # NOTE: every endpoint that starts the engine loop or triggers a BACnet
+    # priority-array write (force/release, scenarios) MUST be `async def` so
+    # it runs on the event loop. A sync def runs in FastAPI's threadpool,
+    # where asyncio.create_task/ensure_future raise "no running event loop"
+    # -- this bit us live: engine.start() 500'd and left a corrupted flag.
+
     @app.post("/api/simulation/start")
-    def start_simulation() -> JSONResponse:
+    async def start_simulation() -> JSONResponse:
         engine.start()
         return JSONResponse(engine.status())
 
     @app.post("/api/simulation/stop")
-    def stop_simulation() -> JSONResponse:
+    async def stop_simulation() -> JSONResponse:
         engine.stop()
         return JSONResponse(engine.status())
 
     @app.post("/api/simulation/speed/{multiplier}")
-    def set_speed(multiplier: float) -> JSONResponse:
+    async def set_speed(multiplier: float) -> JSONResponse:
         engine.speed_multiplier = max(0.1, min(60.0, multiplier))
         return JSONResponse(engine.status())
 
     @app.post("/api/simulation/stop-all")
-    def stop_all_simulation() -> JSONResponse:
+    async def stop_all_simulation() -> JSONResponse:
         """Prominent Stop-All-Simulation control: stops the engine AND clears every active fault/force/scenario."""
         engine.stop()
         scenario_engine.reset()
@@ -243,12 +250,12 @@ def create_app(
         return JSONResponse({"cleared": True})
 
     @app.post("/api/force")
-    def force_value(req: ForceValueRequest) -> JSONResponse:
+    async def force_value(req: ForceValueRequest) -> JSONResponse:
         scenario_engine._apply_force_or_release(req.group_id, req.alias, "set_value", req.value)
         return JSONResponse({"forced": True, "group_id": req.group_id, "alias": req.alias, "value": req.value})
 
     @app.post("/api/release")
-    def release_value(req: ForceValueRequest) -> JSONResponse:
+    async def release_value(req: ForceValueRequest) -> JSONResponse:
         scenario_engine._apply_force_or_release(req.group_id, req.alias, "release_value", None)
         return JSONResponse({"released": True, "group_id": req.group_id, "alias": req.alias})
 
@@ -274,7 +281,7 @@ def create_app(
         return JSONResponse(s.model_dump())
 
     @app.post("/api/scenarios/{scenario_id}/start")
-    def start_scenario(scenario_id: str) -> JSONResponse:
+    async def start_scenario(scenario_id: str) -> JSONResponse:
         try:
             scenario_engine.start(scenario_id)
         except KeyError as e:
@@ -282,18 +289,58 @@ def create_app(
         return JSONResponse(scenario_engine.status())
 
     @app.post("/api/scenarios/stop")
-    def stop_scenario() -> JSONResponse:
+    async def stop_scenario() -> JSONResponse:
         scenario_engine.stop()
         return JSONResponse(scenario_engine.status())
 
     @app.post("/api/scenarios/reset")
-    def reset_scenario() -> JSONResponse:
+    async def reset_scenario() -> JSONResponse:
         scenario_engine.reset()
         return JSONResponse(scenario_engine.status())
 
     @app.get("/api/scenarios/status/current")
     def scenario_status() -> JSONResponse:
         return JSONResponse(scenario_engine.status())
+
+    @app.get("/api/cov/subscriptions")
+    async def cov_subscriptions() -> JSONResponse:
+        """
+        Live COV subscription table for the dashboard -- lets an instructor
+        SHOW the difference between WebCTRL's three refresh strategies:
+        polling (no subscription appears here), unconfirmed COV, and
+        confirmed COV. Reads bacpypes3's internal detection map directly.
+        """
+        bacnet_app = transport.app
+        if bacnet_app is None:
+            return JSONResponse([])
+
+        # reverse map: (object type value, global instance) -> registered point
+        by_identifier = {
+            (rp.config.object_type.value, rp.global_instance): (key, rp)
+            for key, rp in transport.registry.all_points().items()
+        }
+        loop_time = asyncio.get_running_loop().time()
+        result = []
+        for obj_id, detection in bacnet_app._cov_detections.items():
+            obj_type, obj_instance = obj_id
+            point_key, rp = by_identifier.get((str(obj_type), obj_instance), (None, None))
+            for cov in detection.cov_subscriptions:
+                remaining = None
+                if cov.cancel_handle is not None:
+                    remaining = max(0, round(cov.cancel_handle.when() - loop_time))
+                result.append(
+                    {
+                        "object": f"{obj_type}:{obj_instance}",
+                        "point": point_key,
+                        "object_name": rp.config.object_name if rp else None,
+                        "subscriber": str(cov.client_addr),
+                        "process_id": cov.proc_id,
+                        "mode": "confirmed" if cov.confirmed else "unconfirmed",
+                        "lifetime_seconds": cov.lifetime,
+                        "seconds_remaining": remaining,
+                    }
+                )
+        return JSONResponse(result)
 
     @app.get("/api/logs/app")
     def logs_app(limit: int = 100) -> JSONResponse:
@@ -340,7 +387,7 @@ def create_app(
         )
 
     @app.post("/api/llm/apply")
-    def llm_apply(req: LlmApplyRequest) -> JSONResponse:
+    async def llm_apply(req: LlmApplyRequest) -> JSONResponse:
         try:
             bundle = LlmActionBundle.model_validate(req.bundle)
         except Exception as e:  # noqa: BLE001 - malformed client payload, not a server error

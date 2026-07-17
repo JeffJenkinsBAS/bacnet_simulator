@@ -59,6 +59,11 @@ class SimulationEngine:
     def start(self) -> None:
         if self.running:
             return
+        # Verify a loop exists BEFORE flipping the running flag: called from
+        # a worker thread (a sync FastAPI endpoint), create_task raises and
+        # the flag would claim a loop task that doesn't exist -- this exact
+        # corruption happened live on the bench dev machine.
+        asyncio.get_running_loop()
         self.running = True
         self._task = asyncio.create_task(self._run_loop())
 

@@ -237,14 +237,26 @@ class ScenarioEngine:
             priority = 3  # "instructor override" -- below life-safety (1-2), above typical operator/schedule levels
             import asyncio
 
+            from bacpypes3.basetypes import BinaryPV
             from bacpypes3.primitivedata import Real
+
+            from app.config_models import ObjectType
+
+            is_binary = point_config.object_type in (
+                ObjectType.binary_input, ObjectType.binary_output, ObjectType.binary_value
+            )
 
             async def _write():
                 try:
                     if action == "set_value":
-                        cast_value = Real(float(value)) if not isinstance(value, bool) else (
-                            "active" if value else "inactive"
-                        )
+                        # Binary priority arrays only accept typed values --
+                        # a raw "active" string raises TypeError inside
+                        # PriorityValue (this silently broke every scenario
+                        # set_value on a binary point until caught live).
+                        if is_binary:
+                            cast_value = BinaryPV("active" if value in (True, 1, 1.0, "active") else "inactive")
+                        else:
+                            cast_value = Real(float(value))
                         await obj.write_property("presentValue", cast_value, priority=priority)
                     else:
                         await obj.write_property("presentValue", None, priority=priority)  # relinquish

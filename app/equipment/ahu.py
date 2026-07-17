@@ -33,6 +33,7 @@ from app.registry import PointRegistry
 class AhuParameters:
     fan_start_time_constant_seconds: float = 3.0
     economizer_time_constant_seconds: float = 15.0
+    plenum_idle_time_constant_seconds: float = 300.0  # MA drift rate with fans off (no forced airflow)
     coil_time_constant_seconds: float = 20.0
     space_time_constant_seconds: float = 120.0
     chilled_water_leaving_temp_f: float = 44.0
@@ -86,10 +87,16 @@ class AhuModel(EquipmentModel):
             sa_fan_cmd = False
             ra_fan_cmd = False
         if freezestat_trip:
-            # Real freezestat behavior: kill the supply fan, drive heating
-            # valve to fail-safe fully-open to protect the coil.
+            # Real freezestat behavior: kill the supply fan, drive the OA
+            # damper closed, drive heating valve to fail-safe fully-open to
+            # protect the coil (standard freeze response: stop fan, close OA,
+            # open HW valve -- not just the first and last).
             sa_fan_cmd = False
+            econ_pct = 0.0
             heating_pct = 100.0
+        if not sa_fan_cmd:
+            # OA dampers spring-return closed whenever the supply fan is off.
+            econ_pct = 0.0
 
         self._fan_running_frac = self.approach(self._fan_running_frac, 1.0 if sa_fan_cmd else 0.0,
                                                 dt_seconds, self.params.fan_start_time_constant_seconds)
@@ -99,7 +106,14 @@ class AhuModel(EquipmentModel):
 
         # --- Mixed air temp: economizer blends OA and RA, then preheat adds heat ---
         target_ma = (econ_pct / 100.0) * oa_temp + (1.0 - econ_pct / 100.0) * self._ra_temp
-        self._ma_temp = self.approach(self._ma_temp, target_ma, dt_seconds, self.params.economizer_time_constant_seconds)
+        # No airflow -> no forced blend; the plenum slowly equalizes with the
+        # building instead of responding at full economizer speed.
+        ma_tc = (
+            self.params.economizer_time_constant_seconds
+            if self.fan_running
+            else self.params.plenum_idle_time_constant_seconds
+        )
+        self._ma_temp = self.approach(self._ma_temp, target_ma, dt_seconds, ma_tc)
         if preheat_pct > 0.0 and self._ma_temp < self.params.preheat_leaving_temp_f:
             preheat_target = self._ma_temp + (preheat_pct / 100.0) * (self.params.preheat_leaving_temp_f - self._ma_temp)
             self._ma_temp = self.approach(self._ma_temp, preheat_target, dt_seconds, self.params.coil_time_constant_seconds)

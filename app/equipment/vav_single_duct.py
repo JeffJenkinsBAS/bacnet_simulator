@@ -45,6 +45,7 @@ class VavParameters:
     damper_time_constant_seconds: float = 8.0
     max_reheat_rise_f: float = 40.0  # temperature rise at 100% valve, design airflow
     thermal_time_constant_seconds: float = 20.0
+    hot_water_supply_temp_f: float = 140.0  # physical ceiling: discharge air can never exceed the HW loop temp
 
 
 class SingleDuctVavModel(EquipmentModel):
@@ -94,7 +95,10 @@ class SingleDuctVavModel(EquipmentModel):
         effective_airflow = max(self._airflow_cfm, self.params.min_airflow_floor_cfm)
         dilution_factor = self.params.max_airflow_cfm / effective_airflow
         target_rise = (valve_pct / 100.0) * self.params.max_reheat_rise_f * dilution_factor
-        target_discharge_temp = supply_air_temp + target_rise
+        # Clamp at the hot-water loop temperature: at minimum airflow (normal
+        # heating mode) the unclamped dilution math targeted ~1,000 deg F,
+        # which no reheat coil can do -- discharge asymptotes to HW temp.
+        target_discharge_temp = min(supply_air_temp + target_rise, self.params.hot_water_supply_temp_f)
         self._discharge_temp_f = self.approach(
             self._discharge_temp_f, target_discharge_temp, dt_seconds, self.params.thermal_time_constant_seconds
         )

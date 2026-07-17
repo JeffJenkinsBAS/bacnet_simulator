@@ -158,6 +158,10 @@ class FaultManager:
             and f.fault_type not in TRANSPORT_FAULT_TYPES
         ]
 
+    def has_point_fault(self, group_id: str, alias: str, fault_type: FaultType) -> bool:
+        """True if a fault of the given type is active on this exact point."""
+        return any(f.fault_type == fault_type for f in self._matching(group_id, alias))
+
     def apply_to_output(self, group_id: str, alias: str, value: float) -> float:
         """Called from GroupView.set() -- the simulator publishing a sim->WebCTRL value."""
         for f in self._matching(group_id, alias):

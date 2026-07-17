@@ -23,7 +23,7 @@ from typing import Any, Optional
 
 from bacpypes3.local.analog import AnalogInputObject, AnalogOutputObject, AnalogValueObject, AnalogValueObjectCmd
 from bacpypes3.local.binary import BinaryInputObject, BinaryOutputObject, BinaryValueObject, BinaryValueObjectCmd
-from bacpypes3.basetypes import EngineeringUnits
+from bacpypes3.basetypes import EngineeringUnits, Reliability, StatusFlags
 
 from app.config_models import EquipmentGroupConfig, ObjectType, PointConfig
 
@@ -70,6 +70,7 @@ class PointRegistry:
     def __init__(self, groups: list[EquipmentGroupConfig]):
         self.groups = groups
         self._points: dict[str, RegisteredPoint] = {}
+        self._reliability_failed: set[str] = set()  # keys currently flagged by _set_reliability
 
     def build_objects(self) -> list[Any]:
         """
@@ -184,6 +185,29 @@ class PointRegistry:
         else:
             obj.presentValue = float(value)
 
+    def _set_reliability(self, key: str, failed: bool) -> None:
+        """
+        Reflect a reliability_fail fault on the actual BACnet object, so
+        WebCTRL sees Reliability = no-sensor and the statusFlags FAULT bit --
+        a real failed sensor is FLAGGED unreliable, not just silently wrong.
+        Transition-guarded so the object properties are only written when the
+        state actually changes (property writes feed COV detection).
+        """
+        currently_failed = key in self._reliability_failed
+        if failed == currently_failed:
+            return
+        rp = self._points[key]
+        obj = rp.bacnet_object
+        if failed:
+            self._reliability_failed.add(key)
+            obj.reliability = Reliability("noSensor")
+            obj.statusFlags = StatusFlags([0, 1, 0, 0])  # in-alarm, FAULT, overridden, out-of-service
+        else:
+            self._reliability_failed.discard(key)
+            obj.reliability = Reliability("noFaultDetected")
+            obj.statusFlags = StatusFlags([0, 0, 0, 0])
+        logger.info("Reliability %s for %s", "FAULT (no-sensor)" if failed else "restored", key)
+
     def _get_commanded(self, key: str) -> Optional[float]:
         rp = self._points[key]
         pv = rp.bacnet_object.presentValue
@@ -233,7 +257,13 @@ class GroupView:
 
     def set(self, alias: str, value: float, source: str = "simulation-engine") -> None:
         if self._fault_manager is not None:
+            from app.faults import FaultType
+
             value = self._fault_manager.apply_to_output(self._group_id, alias, value)
+            self._registry._set_reliability(
+                self._key(alias),
+                self._fault_manager.has_point_fault(self._group_id, alias, FaultType.reliability_fail),
+            )
         self._registry._set(self._key(alias), value)
 
     def get_commanded(self, alias: str) -> Optional[float]:

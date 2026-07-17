@@ -156,6 +156,51 @@ class NetworkGuardedApplication(Application):
         )
         await super().do_ReadPropertyRequest(apdu)
 
+    async def do_ReadPropertyMultipleRequest(self, apdu):  # noqa: N802
+        # WebCTRL's poll engine primarily uses ReadPropertyMultiple, not
+        # single ReadProperty -- without this override, the device_offline /
+        # slow_response / intermittent_comm faults were invisible to real
+        # WebCTRL polling and messages_in undercounted actual bench traffic.
+        self.messages_in += 1
+        if await self._apply_transport_faults(apdu):
+            return
+        comm_logger.debug("READ-MULTIPLE from %s", apdu.pduSource)
+        await super().do_ReadPropertyMultipleRequest(apdu)
+
+    async def do_WritePropertyMultipleRequest(self, apdu):  # noqa: N802
+        self.messages_in += 1
+        if await self._apply_transport_faults(apdu):
+            return
+
+        from bacpypes3.errors import ExecutionError
+
+        if self._fault_manager is not None:
+            from app.faults import FaultType
+
+            if self._fault_manager.is_transport_fault_active(FaultType.write_rejected):
+                logger.warning("REJECTED write-multiple from %s (write_rejected fault active)", apdu.pduSource)
+                raise ExecutionError(errorClass="device", errorCode="write-access-denied")
+
+        source_ip = str(apdu.pduSource).split(":")[0]
+        allowlist = self._network_config.write_source_allowlist
+        if allowlist and source_ip not in allowlist:
+            logger.warning("REJECTED write-multiple from %s (not in write_source_allowlist)", apdu.pduSource)
+            raise ExecutionError(errorClass="device", errorCode="write-access-denied")
+
+        comm_logger.info("WRITE-MULTIPLE from %s", apdu.pduSource)
+        await super().do_WritePropertyMultipleRequest(apdu)
+
+    async def do_SubscribeCOVRequest(self, apdu):  # noqa: N802
+        self.messages_in += 1
+        if await self._apply_transport_faults(apdu):
+            return
+        comm_logger.info(
+            "COV SUBSCRIBE from %s: %s confirmed=%s lifetime=%s",
+            apdu.pduSource, apdu.monitoredObjectIdentifier,
+            apdu.issueConfirmedNotifications, apdu.lifetime,
+        )
+        await super().do_SubscribeCOVRequest(apdu)
+
 
 class BacnetTransport:
     """
