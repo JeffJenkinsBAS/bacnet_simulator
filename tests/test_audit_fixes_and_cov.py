@@ -323,6 +323,58 @@ async def test_engine_start_off_loop_fails_cleanly():
 
 
 # ---------------------------------------------------------------------------
+# single-point connection: peer allowlist drops non-allowlisted sources
+# ---------------------------------------------------------------------------
+
+async def test_peer_allowlist_blocks_unlisted_sources_and_admits_listed():
+    sup = SupervisoryDeviceConfig(device_instance=242960, device_name="ACI-SIM-PEER-TEST")
+
+    async def read_with_allowlist(allowlist):
+        server_port, client_port = _allocate_ports()  # fresh pair per attempt; sockets aren't closed between runs
+        registry = PointRegistry([_group("site.json")])
+        transport = BacnetTransport(
+            NetworkConfig(
+                bind_address="127.0.0.1", subnet_bits=24, udp_port=server_port,
+                respond_to_who_is=True, write_source_allowlist=[], peer_allowlist=allowlist,
+            ),
+            sup, registry,
+        )
+        app = transport.start()
+        try:
+            client = Application.from_object_list([
+                DeviceObject(objectIdentifier=("device", 599997), objectName="PeerTestClient", vendorIdentifier=999),
+                NetworkPortObject(
+                    IPv4Address(f"127.0.0.1/24:{client_port}"),
+                    objectIdentifier=("network-port", 1), objectName="NetworkPort-1",
+                ),
+            ])
+            oa_id = registry.all_points()["ACI-SIM-SITE.oa_temp"].global_instance
+            try:
+                value = await asyncio.wait_for(
+                    client.read_property(
+                        Address(f"127.0.0.1:{server_port}"),
+                        ObjectIdentifier(f"analog-value,{oa_id}"), "present-value",
+                    ),
+                    timeout=4,
+                )
+                return value, app.messages_blocked
+            except (asyncio.TimeoutError, Exception) as e:  # noqa: BLE001 - abort/timeout both mean "no answer"
+                if type(e).__name__ in ("TimeoutError", "AbortPDU"):
+                    return None, app.messages_blocked
+                raise
+        finally:
+            transport.stop()
+
+    value, blocked = await read_with_allowlist(["10.99.99.99"])  # our 127.0.0.1 client is NOT listed
+    assert value is None, "a non-allowlisted source must get no reply at all"
+    assert blocked >= 1, "the drop must be counted in messages_blocked"
+
+    value, blocked = await read_with_allowlist(["127.0.0.1"])  # now we are listed
+    assert value is not None and float(value) == pytest.approx(70.0)
+    assert blocked == 0
+
+
+# ---------------------------------------------------------------------------
 # COV: confirmed and unconfirmed delivery over real BACnet/IP
 # ---------------------------------------------------------------------------
 

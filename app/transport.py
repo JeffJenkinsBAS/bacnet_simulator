@@ -53,6 +53,7 @@ class NetworkGuardedApplication(Application):
     _fault_manager = None  # app.faults.FaultManager, set post-construction; Optional to avoid an import cycle
     messages_in: int = 0
     messages_out: int = 0
+    messages_blocked: int = 0  # requests dropped by the peer allowlist (single-point-connection guard)
     last_command_received: Optional[dict] = None
 
     @classmethod
@@ -64,8 +65,31 @@ class NetworkGuardedApplication(Application):
         app._fault_manager = fault_manager
         app.messages_in = 0
         app.messages_out = 0
+        app.messages_blocked = 0
         app.last_command_received = None
         return app
+
+    def _peer_blocked(self, apdu) -> bool:
+        """
+        Single-point-connection guard (checked FIRST in every handler): with
+        a non-empty peer_allowlist, requests from any other source are
+        silently dropped -- the office building-control WebCTRL must never
+        be able to interact with this simulator, even if it somehow reaches
+        our port. Silent (no error reply) so we never transmit anything back
+        to a non-allowlisted host.
+        """
+        allowlist = self._network_config.peer_allowlist
+        if not allowlist:
+            return False
+        source_ip = str(apdu.pduSource).split(":")[0]
+        if source_ip in allowlist:
+            return False
+        self.messages_blocked += 1
+        comm_logger.warning(
+            "BLOCKED request from %s (not in peer_allowlist %s) -- dropped without reply",
+            apdu.pduSource, allowlist,
+        )
+        return True
 
     async def _apply_transport_faults(self, apdu) -> bool:
         """
@@ -96,6 +120,8 @@ class NetworkGuardedApplication(Application):
         return False
 
     async def do_WhoIsRequest(self, apdu):  # noqa: N802 - bacpypes3 naming convention
+        if self._peer_blocked(apdu):
+            return
         self.messages_in += 1
         if await self._apply_transport_faults(apdu):
             return
@@ -106,6 +132,8 @@ class NetworkGuardedApplication(Application):
         await super().do_WhoIsRequest(apdu)
 
     async def do_WritePropertyRequest(self, apdu):  # noqa: N802
+        if self._peer_blocked(apdu):
+            return
         self.messages_in += 1
         if await self._apply_transport_faults(apdu):
             return
@@ -148,6 +176,8 @@ class NetworkGuardedApplication(Application):
         await super().do_WritePropertyRequest(apdu)
 
     async def do_ReadPropertyRequest(self, apdu):  # noqa: N802
+        if self._peer_blocked(apdu):
+            return
         self.messages_in += 1
         if await self._apply_transport_faults(apdu):
             return
@@ -161,6 +191,8 @@ class NetworkGuardedApplication(Application):
         # single ReadProperty -- without this override, the device_offline /
         # slow_response / intermittent_comm faults were invisible to real
         # WebCTRL polling and messages_in undercounted actual bench traffic.
+        if self._peer_blocked(apdu):
+            return
         self.messages_in += 1
         if await self._apply_transport_faults(apdu):
             return
@@ -168,6 +200,8 @@ class NetworkGuardedApplication(Application):
         await super().do_ReadPropertyMultipleRequest(apdu)
 
     async def do_WritePropertyMultipleRequest(self, apdu):  # noqa: N802
+        if self._peer_blocked(apdu):
+            return
         self.messages_in += 1
         if await self._apply_transport_faults(apdu):
             return
@@ -191,6 +225,8 @@ class NetworkGuardedApplication(Application):
         await super().do_WritePropertyMultipleRequest(apdu)
 
     async def do_SubscribeCOVRequest(self, apdu):  # noqa: N802
+        if self._peer_blocked(apdu):
+            return
         self.messages_in += 1
         if await self._apply_transport_faults(apdu):
             return

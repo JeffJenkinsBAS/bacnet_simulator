@@ -182,6 +182,7 @@
   .cmdbar {
     position: sticky; top: 14px; z-index: 30;
     display: flex; align-items: center; gap: 16px;
+    flex-wrap: wrap;
     padding: 12px 18px;
     margin: 14px 18px 0 18px;
     border-radius: var(--r-panel);
@@ -234,6 +235,13 @@
   .btn-stopall:hover { filter: brightness(1.1); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), var(--glow-red); }
   .btn-stopall:active { transform: scale(0.95); }
   .btn-stopall svg { width: 16px; height: 16px; }
+
+  .co-logo {
+    width: 46px; height: 46px; flex-shrink: 0;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 0 1px var(--glass-border);
+  }
 
   /* ================= CONTENT / VIEWS ================= */
   .content { padding: 18px; max-width: 1560px; width: 100%; margin: 0 auto; }
@@ -803,6 +811,7 @@
       <button class="btn-stopall" id="btn-stopall" aria-label="Stop all simulation, clear every fault, force and scenario">
         <svg><use href="#i-stop"/></svg>STOP ALL
       </button>
+      <img class="co-logo" src="/static/logo.svg" alt="Automated Controls Inc" title="Automated Controls Inc">
     </header>
 
     <main class="content">
@@ -843,6 +852,8 @@
             <div class="row"><span class="k">UDP port</span><span class="v" id="net-port">&mdash;</span></div>
             <div class="row"><span class="k">Mode</span><span class="v"><span class="pill info" id="net-mode">&mdash;</span></span></div>
             <div class="row"><span class="k">Last command in</span><span class="v" id="net-lastcmd">&mdash;</span></div>
+            <div class="row"><span class="k">Peer allowlist</span><span class="v" id="net-peers">&mdash;</span></div>
+            <div class="row"><span class="k">Blocked requests</span><span class="v" id="net-blocked">&mdash;</span></div>
             <div class="row"><span class="k">Uptime</span><span class="v" id="net-uptime">&mdash;</span></div>
           </div>
 
@@ -1272,6 +1283,11 @@ function renderStatus(status) {
   $('net-port').textContent = status.device.udp_port + '/udp';
   $('net-mode').textContent = status.device.private_lab_mode ? 'PRIVATE LAB' : 'OPEN';
   $('net-lastcmd').textContent = status.bacnet.last_command_received || 'none yet';
+  const peers = status.bacnet.peer_allowlist || [];
+  $('net-peers').textContent = peers.length ? peers.join(', ') : 'OPEN (all sources)';
+  const blockedEl = $('net-blocked');
+  blockedEl.textContent = status.bacnet.messages_blocked;
+  blockedEl.style.color = status.bacnet.messages_blocked > 0 ? 'var(--red)' : '';
   $('net-uptime').textContent = fmtDuration(status.uptime_seconds);
 
   renderScenario(status.scenario);

@@ -98,6 +98,8 @@ def create_app(
                 },
                 "bacnet": {
                     "messages_in": bacnet_app.messages_in if bacnet_app else 0,
+                    "messages_blocked": bacnet_app.messages_blocked if bacnet_app else 0,
+                    "peer_allowlist": transport.network_config.peer_allowlist,
                     "last_command_received": bacnet_app.last_command_received if bacnet_app else None,
                 },
                 "fleet": {

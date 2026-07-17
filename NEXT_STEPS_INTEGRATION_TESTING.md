@@ -33,9 +33,14 @@ Edit `config\network.json`:
   `192.168.68.0/24` subnet (find it with `ipconfig`). **Never `127.0.0.1`
   or `0.0.0.0`** — both were tested during development and don't reliably
   deliver BACnet traffic.
-- **`udp_port`** → leave at `47808` unless something else on this laptop
-  is already using it (resolve that conflict rather than picking a
-  different port — Automated Logic controllers broadcast to 47808).
+- **`udp_port`** → `47809` (bench standard, deliberately NOT 47808: the
+  office building-control WebCTRL at 192.168.45.34 lives on 47808 and
+  must never see bench traffic; Jeff sets the bench WebCTRL's BACnet
+  connection to 47809 to match).
+- **`peer_allowlist`** → `["<this laptop's static IP>"]` so the simulator
+  only answers the co-resident bench WebCTRL and silently drops every
+  other host (single-point connection). The dashboard's Network panel
+  shows a live count of blocked requests.
 
 ## 5. Do one manual test run first, before wrapping it as a service
 
@@ -48,7 +53,7 @@ Confirm the dashboard opens at `http://127.0.0.1:8000` and
 
 ```
 Loaded and validated 16 equipment groups (143 total objects)
-Supervisory BACnet device 'ACI-SIM-SUPERVISOR' (instance 242000) online, bound to <your IP>:47808
+Supervisory BACnet device 'ACI-SIM-SUPERVISOR' (instance 242000) online, bound to <your IP>:47809
 Duplicate device-instance check passed for instance 242000
 ```
 
@@ -69,7 +74,7 @@ A service has no desktop session, so the "Allow access" popup you might
 expect **will not appear**. Add it manually before moving on:
 
 1. `wf.msc` → **Inbound Rules → New Rule → Port → UDP → Specific local
-   ports: `47808`**
+   ports: `47809`**
 2. Allow the connection, apply to **Private** networks, name it
    something identifiable.
 

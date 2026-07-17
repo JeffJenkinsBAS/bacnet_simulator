@@ -1,11 +1,12 @@
 {
   "bind_address": "127.0.0.1",
   "subnet_bits": 24,
-  "udp_port": 47808,
+  "udp_port": 47809,
   "vendor_identifier": 999,
   "network_number": 0,
   "private_lab_mode": true,
   "respond_to_who_is": true,
   "write_source_allowlist": [],
+  "peer_allowlist": ["127.0.0.1"],
   "startup_duplicate_instance_check": true
 }

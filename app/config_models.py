@@ -220,10 +220,11 @@ class NetworkConfig(BaseModel):
     )
     subnet_bits: int = Field(default=24, description="Subnet mask size for the bind address, e.g. 24 for /24")
     udp_port: int = Field(
-        default=47808,
-        description="The standard BACnet/IP port. Per Jeff's explicit instruction, everything "
-        "resides on 47808 behind the one supervisory device -- there is no per-equipment port "
-        "anymore.",
+        default=47809,
+        description="BACnet/IP port for the whole supervisory device (no per-equipment ports). "
+        "Bench standard is 47809 -- NOT the default 47808 -- so simulator/bench-WebCTRL traffic "
+        "can never reach the office building-control WebCTRL, which lives on 47808 "
+        "(192.168.45.34). The bench WebCTRL's BACnet connection must be set to 47809 to match.",
     )
     vendor_identifier: int = 999
     network_number: int = 0
@@ -232,5 +233,13 @@ class NetworkConfig(BaseModel):
     write_source_allowlist: list[str] = Field(
         default_factory=list,
         description="If non-empty, only WriteProperty requests from these source IPs are accepted.",
+    )
+    peer_allowlist: list[str] = Field(
+        default_factory=list,
+        description="Single-point-connection enforcement: when non-empty, EVERY BACnet request "
+        "(reads, writes, discovery, COV subscribe) from a source IP not in this list is silently "
+        "dropped and counted in messages_blocked. On the bench, set this to the laptop's own "
+        "static IP so only the co-resident bench WebCTRL can talk to the simulator; leave empty "
+        "to accept all sources (dev only).",
     )
     startup_duplicate_instance_check: bool = True
