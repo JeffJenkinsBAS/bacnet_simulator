@@ -1,0 +1,18 @@
+# Python virtual environment (recreate with scripts\windows\install.bat)
+venv/
+
+# Python bytecode caches
+__pycache__/
+*.pyc
+
+# Runtime output
+logs/
+
+# Offline installer payload (built by download_offline_packages.bat)
+vendor_packages/
+
+# Test runner cache
+.pytest_cache/
+
+# NSSM binary (downloaded manually per PACKAGING.md, not distributed)
+tools/nssm/nssm.exe
