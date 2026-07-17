@@ -2,458 +2,1576 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ACI BACnet Building Simulation Platform</title>
 <style>
-  :root { color-scheme: dark; }
-  body { font-family: -apple-system, Segoe UI, Arial, sans-serif; background: #14171c; color: #e6e9ee; margin: 0; padding: 24px; }
-  h1 { font-size: 20px; margin: 0 0 4px 0; }
-  .subtitle { color: #8b95a5; margin-bottom: 20px; font-size: 13px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-  .card { background: #1c2028; border: 1px solid #2a2f3a; border-radius: 8px; padding: 16px; }
-  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: #8b95a5; margin: 0 0 12px 0; }
-  .row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 14px; border-bottom: 1px solid #23272f; }
+  /* ================= DESIGN TOKENS ================= */
+  :root {
+    color-scheme: dark;
+    --bg-0: #070b14;
+    --bg-1: #0b1020;
+    --surface-1: #101729;
+    --surface-2: #0c1322;
+    --surface-3: #161f38;
+    --border: rgba(148, 163, 184, 0.14);
+    --border-strong: rgba(148, 163, 184, 0.28);
+    --text-1: #e8edf7;
+    --text-2: #97a3b8;
+    --text-3: #64748b;
+    --amber: #f59e0b;
+    --amber-deep: #d97706;
+    --amber-soft: rgba(245, 158, 11, 0.14);
+    --indigo: #818cf8;
+    --indigo-deep: #6366f1;
+    --indigo-soft: rgba(99, 102, 241, 0.16);
+    --green: #34d399;
+    --green-soft: rgba(52, 211, 153, 0.14);
+    --red: #f87171;
+    --red-deep: #dc2626;
+    --red-soft: rgba(248, 113, 113, 0.14);
+    --cyan: #22d3ee;
+    --purple: #c4b5fd;
+    --sans: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --mono: "Cascadia Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+    --r-sm: 6px;
+    --r-md: 10px;
+    --shadow-panel: 0 4px 24px rgba(0, 0, 0, 0.35);
+    --glow-amber: 0 0 14px rgba(245, 158, 11, 0.35);
+    --glow-red: 0 0 14px rgba(248, 113, 113, 0.35);
+    --dur-fast: 160ms;
+    --dur-med: 240ms;
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--text-1);
+    background:
+      radial-gradient(1100px 500px at 85% -10%, rgba(99, 102, 241, 0.10), transparent 60%),
+      radial-gradient(900px 420px at -10% 110%, rgba(217, 119, 6, 0.07), transparent 60%),
+      var(--bg-1);
+    background-attachment: fixed;
+  }
+  /* faint blueprint grid over the whole station */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
+    background-size: 34px 34px;
+    mask-image: radial-gradient(ellipse at 50% 40%, black 30%, transparent 90%);
+  }
+
+  /* ================= APP FRAME ================= */
+  .app { display: flex; min-height: 100dvh; }
+
+  /* -------- left rail -------- */
+  .rail {
+    width: 212px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 14px 10px;
+    background: linear-gradient(180deg, rgba(16, 23, 41, 0.92), rgba(11, 16, 32, 0.92));
+    border-right: 1px solid var(--border);
+    position: sticky; top: 0; height: 100dvh;
+    z-index: 40;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 8px 16px 8px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 10px;
+  }
+  .brand-mark {
+    width: 34px; height: 34px; flex-shrink: 0;
+    display: grid; place-items: center;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--amber-deep), var(--amber));
+    color: #1a1205;
+    font-weight: 800; font-size: 13px; letter-spacing: 0.02em;
+    box-shadow: var(--glow-amber);
+  }
+  .brand-name { font-weight: 700; font-size: 13px; letter-spacing: 0.14em; }
+  .brand-sub { font-size: 10px; color: var(--text-3); letter-spacing: 0.08em; margin-top: 2px; }
+
+  .nav-btn {
+    display: flex; align-items: center; gap: 11px;
+    width: 100%;
+    padding: 10px 12px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    color: var(--text-2);
+    font: inherit; font-size: 13px; font-weight: 600; letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: background var(--dur-fast) ease, color var(--dur-fast) ease, border-color var(--dur-fast) ease;
+    position: relative;
+  }
+  .nav-btn:hover { background: rgba(148, 163, 184, 0.07); color: var(--text-1); }
+  .nav-btn.active {
+    background: linear-gradient(90deg, var(--amber-soft), transparent 85%);
+    border-color: rgba(245, 158, 11, 0.25);
+    color: var(--text-1);
+  }
+  .nav-btn.active::before {
+    content: "";
+    position: absolute; left: -1px; top: 8px; bottom: 8px;
+    width: 3px; border-radius: 2px;
+    background: linear-gradient(180deg, var(--amber), var(--amber-deep));
+    box-shadow: var(--glow-amber);
+  }
+  .nav-btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .nav-badge {
+    margin-left: auto;
+    font-family: var(--mono); font-size: 10.5px; font-weight: 600;
+    padding: 1px 7px; border-radius: 999px;
+    background: var(--red-soft); color: var(--red);
+    border: 1px solid rgba(248, 113, 113, 0.3);
+  }
+  .nav-badge[hidden] { display: none; }
+
+  .rail-foot {
+    margin-top: auto;
+    padding: 12px 10px 4px 10px;
+    border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 8px;
+    font-family: var(--mono); font-size: 10.5px; color: var(--text-3);
+  }
+  .linkline { display: flex; align-items: center; gap: 8px; letter-spacing: 0.1em; }
+
+  /* -------- command bar -------- */
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .cmdbar {
+    position: sticky; top: 0; z-index: 30;
+    display: flex; align-items: center; gap: 18px;
+    padding: 12px 22px;
+    background: rgba(11, 16, 32, 0.96);
+    border-bottom: 1px solid var(--border);
+  }
+  .cmdbar::after {
+    content: "";
+    position: absolute; left: 0; right: 0; bottom: -1px; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(245, 158, 11, 0.55), transparent);
+  }
+  .cmd-title { min-width: 0; }
+  .cmd-title h1 {
+    margin: 0; font-size: 15px; font-weight: 700; letter-spacing: 0.12em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .cmd-title .sub { font-size: 11px; color: var(--text-3); letter-spacing: 0.06em; margin-top: 1px; }
+  .cmd-metrics {
+    display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
+    color: var(--text-2);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 5px 10px;
+    white-space: nowrap;
+  }
+  .chip b { color: var(--text-1); font-weight: 600; }
+  .chip.alert { border-color: rgba(248, 113, 113, 0.45); background: var(--red-soft); }
+  .chip.alert b { color: var(--red); }
+
+  .btn-stopall {
+    display: inline-flex; align-items: center; gap: 9px;
+    font: inherit; font-size: 12px; font-weight: 800; letter-spacing: 0.12em;
+    color: #fff;
+    background: linear-gradient(160deg, #ef4444, var(--red-deep) 60%, #991b1b);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: var(--r-sm);
+    padding: 10px 16px;
+    cursor: pointer;
+    position: relative;
+    transition: transform var(--dur-fast) ease, box-shadow var(--dur-fast) ease, filter var(--dur-fast) ease;
+    box-shadow: 0 2px 10px rgba(220, 38, 38, 0.35);
+  }
+  .btn-stopall:hover { filter: brightness(1.1); box-shadow: var(--glow-red); }
+  .btn-stopall:active { transform: scale(0.97); }
+  .btn-stopall svg { width: 16px; height: 16px; }
+
+  /* ================= CONTENT / VIEWS ================= */
+  .content { padding: 22px; max-width: 1560px; width: 100%; margin: 0 auto; }
+  .view { display: none; }
+  .view.active { display: block; }
+  .view.active > .panel, .view.active > .grid > .panel {
+    animation: panel-in var(--dur-med) var(--ease-out) backwards;
+  }
+  .view.active > .grid > .panel:nth-child(2) { animation-delay: 50ms; }
+  .view.active > .grid > .panel:nth-child(3) { animation-delay: 100ms; }
+  .view.active > .grid > .panel:nth-child(4) { animation-delay: 150ms; }
+  @keyframes panel-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .grid { display: grid; gap: 16px; margin-bottom: 16px; }
+  .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid.stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+  /* -------- panels with HUD corner brackets -------- */
+  .panel {
+    position: relative;
+    background: linear-gradient(180deg, var(--surface-1), rgba(16, 23, 41, 0.82));
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 16px;
+    box-shadow: var(--shadow-panel);
+    margin-bottom: 16px;
+  }
+  .grid > .panel { margin-bottom: 0; }
+  .panel::before, .panel::after {
+    content: "";
+    position: absolute; width: 14px; height: 14px;
+    border-color: rgba(245, 158, 11, 0.38);
+    border-style: solid;
+    pointer-events: none;
+  }
+  .panel::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; border-radius: var(--r-md) 0 0 0; }
+  .panel::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; border-radius: 0 0 var(--r-md) 0; }
+
+  .panel-head {
+    display: flex; align-items: center; gap: 9px;
+    margin: -2px 0 13px 0;
+  }
+  .panel-head svg { width: 15px; height: 15px; color: var(--amber); flex-shrink: 0; }
+  .panel-head h2 {
+    margin: 0; font-size: 11.5px; font-weight: 700;
+    letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--text-2);
+  }
+  .panel-head .spacer { flex: 1; }
+  .panel-note { font-size: 11.5px; color: var(--text-3); line-height: 1.55; }
+
+  /* -------- stat tiles -------- */
+  .stat {
+    position: relative;
+    background: linear-gradient(180deg, var(--surface-1), rgba(16, 23, 41, 0.82));
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: 14px 16px;
+    box-shadow: var(--shadow-panel);
+    overflow: hidden;
+  }
+  .stat::after {
+    content: "";
+    position: absolute; left: 0; right: 0; top: 0; height: 2px;
+    background: linear-gradient(90deg, var(--amber-deep), transparent 70%);
+    opacity: 0.7;
+  }
+  .stat .lbl { font-size: 10.5px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); }
+  .stat .val { font-family: var(--mono); font-size: 26px; font-weight: 600; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .stat .val small { font-size: 12px; color: var(--text-3); font-weight: 400; }
+  .stat.hot .val { color: var(--red); text-shadow: 0 0 12px rgba(248, 113, 113, 0.4); }
+  .stat.hot::after { background: linear-gradient(90deg, var(--red-deep), transparent 70%); }
+
+  /* -------- rows / readouts -------- */
+  .row {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 7px 0; font-size: 13px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  }
   .row:last-child { border-bottom: none; }
-  .label { color: #8b95a5; }
-  .value { font-variant-numeric: tabular-nums; }
-  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-  .pill.running { background: #16352a; color: #4ade80; }
-  .pill.stopped { background: #3a1f1f; color: #f87171; }
-  .pill.lab { background: #1f2d3a; color: #60a5fa; }
-  button, select, input { background: #2563eb; color: white; border: none; padding: 8px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; margin-right: 8px; }
-  select, input { background: #0e1116; border: 1px solid #2a2f3a; color: #e6e9ee; cursor: default; }
-  button.stop { background: #dc2626; }
-  button:hover { opacity: 0.9; }
+  .row .k { color: var(--text-3); letter-spacing: 0.03em; }
+  .row .v { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+
+  /* -------- LEDs & pills -------- */
+  .led {
+    display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--text-3); flex-shrink: 0;
+    transition: background var(--dur-med) ease, box-shadow var(--dur-med) ease;
+  }
+  .led.on { background: var(--green); box-shadow: 0 0 9px rgba(52, 211, 153, 0.8); animation: led-pulse 2.2s ease-in-out infinite; }
+  .led.off { background: var(--red); box-shadow: 0 0 8px rgba(248, 113, 113, 0.6); }
+  .led.warn { background: var(--amber); box-shadow: 0 0 8px rgba(245, 158, 11, 0.7); }
+  @keyframes led-pulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(52, 211, 153, 0.5); }
+    50% { box-shadow: 0 0 13px rgba(52, 211, 153, 0.95); }
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 3px 11px; border-radius: 999px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+    border: 1px solid transparent;
+  }
+  .pill.ok { background: var(--green-soft); color: var(--green); border-color: rgba(52, 211, 153, 0.3); }
+  .pill.bad { background: var(--red-soft); color: var(--red); border-color: rgba(248, 113, 113, 0.3); }
+  .pill.info { background: var(--indigo-soft); color: var(--indigo); border-color: rgba(129, 140, 248, 0.3); }
+  .pill.warn { background: var(--amber-soft); color: var(--amber); border-color: rgba(245, 158, 11, 0.3); }
+
+  /* ================= CONTROLS ================= */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    font: inherit; font-size: 12.5px; font-weight: 700; letter-spacing: 0.05em;
+    padding: 9px 15px;
+    border-radius: var(--r-sm);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: transform var(--dur-fast) ease, box-shadow var(--dur-fast) ease, filter var(--dur-fast) ease, background var(--dur-fast) ease;
+    color: #fff;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+  .btn svg { width: 15px; height: 15px; }
+  .btn.primary {
+    background: linear-gradient(160deg, var(--amber), var(--amber-deep));
+    color: #221503;
+    box-shadow: 0 2px 10px rgba(217, 119, 6, 0.3);
+  }
+  .btn.primary:hover:not(:disabled) { filter: brightness(1.08); box-shadow: var(--glow-amber); }
+  .btn.accent {
+    background: linear-gradient(160deg, var(--indigo), var(--indigo-deep));
+    box-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);
+  }
+  .btn.accent:hover:not(:disabled) { filter: brightness(1.1); box-shadow: 0 0 14px rgba(99, 102, 241, 0.45); }
+  .btn.danger {
+    background: linear-gradient(160deg, #ef4444, var(--red-deep));
+    box-shadow: 0 2px 10px rgba(220, 38, 38, 0.3);
+  }
+  .btn.danger:hover:not(:disabled) { filter: brightness(1.1); box-shadow: var(--glow-red); }
+  .btn.ghost {
+    background: transparent; color: var(--text-2);
+    border-color: var(--border-strong);
+  }
+  .btn.ghost:hover:not(:disabled) { background: rgba(148, 163, 184, 0.08); color: var(--text-1); }
+  .btn.sm { padding: 5px 11px; font-size: 11.5px; }
+
+  :is(button, input, select, textarea, .switch):focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+  }
+
+  input, select, textarea {
+    font: inherit; font-size: 12.5px;
+    color: var(--text-1);
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+    padding: 8px 10px;
+    transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+  }
+  input:hover, select:hover, textarea:hover { border-color: rgba(148, 163, 184, 0.45); }
+  input:focus, select:focus, textarea:focus { border-color: var(--amber); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); outline: none; }
+  input::placeholder, textarea::placeholder { color: var(--text-3); }
+  select { cursor: pointer; }
+  textarea { font-family: var(--mono); line-height: 1.55; resize: vertical; }
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field > label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3); }
+  .controls-line { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+
+  /* -------- master toggle switch -------- */
+  .switch {
+    position: relative; width: 58px; height: 30px; flex-shrink: 0;
+    border-radius: 999px; cursor: pointer;
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    transition: background var(--dur-med) ease, border-color var(--dur-med) ease, box-shadow var(--dur-med) ease;
+  }
+  .switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+  .switch .knob {
+    position: absolute; top: 3px; left: 3px;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: linear-gradient(180deg, #cbd5e1, #64748b);
+    transition: transform var(--dur-med) var(--ease-out), background var(--dur-med) ease, box-shadow var(--dur-med) ease;
+    pointer-events: none;
+  }
+  .switch.on {
+    background: linear-gradient(90deg, var(--amber-deep), var(--amber));
+    border-color: rgba(245, 158, 11, 0.6);
+    box-shadow: var(--glow-amber);
+    animation: breath 3.2s ease-in-out infinite;
+  }
+  .switch.on .knob { transform: translateX(28px); background: linear-gradient(180deg, #fff7e6, #fcd34d); box-shadow: 0 0 8px rgba(255, 244, 214, 0.8); }
+  @keyframes breath {
+    0%, 100% { box-shadow: 0 0 8px rgba(245, 158, 11, 0.3); }
+    50% { box-shadow: 0 0 18px rgba(245, 158, 11, 0.55); }
+  }
+  .master-line { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+  .master-line .state-lbl { font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; color: var(--text-2); }
+  .master-line .state-lbl.on { color: var(--amber); text-shadow: 0 0 10px rgba(245, 158, 11, 0.45); }
+
+  /* -------- segmented rate control -------- */
+  .seg {
+    display: inline-flex; background: var(--surface-2);
+    border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+    overflow: hidden;
+  }
+  .seg button {
+    font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+    color: var(--text-2);
+    background: transparent; border: none;
+    padding: 6px 11px; cursor: pointer;
+    border-right: 1px solid var(--border);
+    transition: background var(--dur-fast) ease, color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+  }
+  .seg button:last-child { border-right: none; }
+  .seg button:hover { color: var(--text-1); background: rgba(148, 163, 184, 0.08); }
+  .seg button.active {
+    background: linear-gradient(180deg, var(--amber), var(--amber-deep));
+    color: #221503;
+    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.25);
+  }
+
+  /* ================= TABLES ================= */
+  .tablewrap { overflow: auto; max-height: 520px; border: 1px solid var(--border); border-radius: var(--r-sm); }
   table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #23272f; }
-  th { color: #8b95a5; font-weight: 600; text-transform: uppercase; font-size: 10.5px; position: sticky; top: 0; background: #1c2028; }
-  .dir-sim { color: #4ade80; }
-  .dir-webctrl { color: #60a5fa; }
-  .interlock { color: #f87171; font-weight: 700; }
-  .fault-badge { color: #fbbf24; font-weight: 700; }
-  .forced-badge { color: #a78bfa; font-weight: 700; }
-  .table-scroll { max-height: 480px; overflow-y: auto; }
-  .log-box { background: #0e1116; border-radius: 6px; padding: 10px; height: 220px; overflow-y: auto; font-family: ui-monospace, monospace; font-size: 11.5px; color: #b7c0cf; white-space: pre-wrap; }
-  .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid #2a2f3a; }
-  .tab-btn { background: transparent; color: #8b95a5; border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 16px; font-size: 13px; cursor: pointer; margin: 0; }
-  .tab-btn.active { color: #e6e9ee; border-bottom-color: #2563eb; }
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
-  .scenario-card { background: #171b22; border: 1px solid #2a2f3a; border-radius: 8px; padding: 12px; margin-bottom: 8px; }
-  .scenario-card h3 { margin: 0 0 6px 0; font-size: 14px; }
-  .scenario-card p { margin: 0 0 8px 0; font-size: 12.5px; color: #8b95a5; }
-  .fault-row { display: flex; justify-content: space-between; align-items: center; padding: 8px; background: #171b22; border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
-  .danger-zone { border: 1px solid #dc2626; border-radius: 8px; padding: 14px; margin-bottom: 20px; background: #1e1315; }
+  th, td { text-align: left; padding: 7px 11px; border-bottom: 1px solid rgba(148, 163, 184, 0.08); white-space: nowrap; }
+  td { font-variant-numeric: tabular-nums; }
+  th {
+    position: sticky; top: 0; z-index: 2;
+    background: #121a2f;
+    color: var(--text-3);
+    font-size: 10px; font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase;
+  }
+  tbody tr { transition: background var(--dur-fast) ease; }
+  tbody tr:hover { background: rgba(148, 163, 184, 0.05); }
+  td.mono { font-family: var(--mono); font-size: 12px; }
+  td.dim { color: var(--text-3); white-space: normal; }
+  .dir-tag { font-family: var(--mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 4px; }
+  .dir-sim { color: var(--green); background: var(--green-soft); }
+  .dir-web { color: var(--indigo); background: var(--indigo-soft); }
+  .badge { font-family: var(--mono); font-size: 10px; font-weight: 700; letter-spacing: 0.06em; padding: 2px 7px; border-radius: 4px; margin-right: 4px; }
+  .badge.fault { color: var(--amber); background: var(--amber-soft); border: 1px solid rgba(245, 158, 11, 0.3); }
+  .badge.forced { color: var(--purple); background: rgba(167, 139, 250, 0.14); border: 1px solid rgba(167, 139, 250, 0.3); }
+  .badge.interlock { color: var(--red); background: var(--red-soft); border: 1px solid rgba(248, 113, 113, 0.3); }
+  @keyframes cell-flash { from { background: rgba(245, 158, 11, 0.28); } to { background: transparent; } }
+  td.flash { animation: cell-flash 800ms ease-out; }
+
+  /* ================= SCENARIOS ================= */
+  .scn-card {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--indigo-deep);
+    border-radius: var(--r-sm);
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    transition: border-color var(--dur-fast) ease, transform var(--dur-fast) ease;
+  }
+  .scn-card:hover { border-color: rgba(129, 140, 248, 0.5); }
+  .scn-card h3 { margin: 0 0 5px 0; font-size: 13.5px; font-weight: 700; }
+  .scn-card p { margin: 0 0 9px 0; font-size: 12px; color: var(--text-2); line-height: 1.5; }
+  .scn-card .meta { font-family: var(--mono); font-size: 10.5px; color: var(--text-3); letter-spacing: 0.05em; }
+  .scn-live {
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.12), var(--surface-2));
+    border: 1px solid rgba(129, 140, 248, 0.45);
+    border-radius: var(--r-sm);
+    padding: 13px 15px;
+    margin-bottom: 12px;
+  }
+  .scn-live h3 { margin: 0 0 7px 0; font-size: 13.5px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .scn-live .meta { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); margin-bottom: 4px; }
+  .progress { height: 6px; background: rgba(148, 163, 184, 0.12); border-radius: 999px; overflow: hidden; margin: 9px 0 7px 0; }
+  .progress > div {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--indigo-deep), var(--indigo));
+    border-radius: 999px;
+    box-shadow: 0 0 8px rgba(129, 140, 248, 0.7);
+    transition: width 500ms var(--ease-out);
+  }
+
+  /* -------- fault rows -------- */
+  .fault-item {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--amber-deep);
+    border-radius: var(--r-sm);
+    padding: 8px 12px; margin-bottom: 7px;
+    font-size: 12.5px;
+    animation: panel-in var(--dur-med) var(--ease-out);
+  }
+  .fault-item .t { font-family: var(--mono); font-size: 11.5px; overflow-wrap: anywhere; }
+  .fault-item .t b { color: var(--amber); font-weight: 600; }
+
+  /* ================= LOGS ================= */
+  .logbox {
+    background: var(--bg-0);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 11px 13px;
+    height: 420px; overflow-y: auto;
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.65;
+    color: #aab7cc;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+  }
+  .follow-lbl { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3); letter-spacing: 0.06em; cursor: pointer; }
+  .follow-lbl input { accent-color: var(--amber); cursor: pointer; }
+
+  /* ================= LLM CONSOLE ================= */
+  .llm-preview {
+    border: 1px solid rgba(129, 140, 248, 0.45);
+    background: linear-gradient(180deg, rgba(99, 102, 241, 0.09), var(--surface-1));
+  }
+  .llm-preview[hidden] { display: none; }
+  pre.code {
+    background: var(--bg-0);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    padding: 12px;
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.6;
+    overflow-x: auto;
+    color: #b6c2d9;
+    margin: 10px 0 0 0;
+  }
+  .spin { animation: spin 900ms linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ================= TOASTS ================= */
+  .toasts {
+    position: fixed; right: 18px; bottom: 18px; z-index: 100;
+    display: flex; flex-direction: column; gap: 9px;
+    max-width: min(380px, calc(100vw - 36px));
+  }
+  .toast {
+    display: flex; align-items: flex-start; gap: 10px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--green);
+    border-radius: var(--r-sm);
+    padding: 11px 14px;
+    font-size: 12.5px; line-height: 1.45;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    animation: toast-in var(--dur-med) var(--ease-out);
+  }
+  .toast.err { border-left-color: var(--red); }
+  .toast.warn { border-left-color: var(--amber); }
+  .toast svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; }
+  .toast.ok svg { color: var(--green); }
+  .toast.err svg { color: var(--red); }
+  .toast.warn svg { color: var(--amber); }
+  .toast.out { animation: toast-out var(--dur-fast) ease-in forwards; }
+  @keyframes toast-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+  @keyframes toast-out { to { opacity: 0; transform: translateX(24px); } }
+
+  /* ================= MODAL ================= */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 90;
+    background: rgba(4, 7, 14, 0.62);
+    backdrop-filter: blur(4px);
+    display: grid; place-items: center;
+    animation: fade-in var(--dur-fast) ease;
+  }
+  .modal-backdrop[hidden] { display: none; }
+  @keyframes fade-in { from { opacity: 0; } }
+  .modal {
+    width: min(460px, calc(100vw - 40px));
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-md);
+    padding: 20px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    animation: modal-in var(--dur-med) var(--ease-out);
+  }
+  @keyframes modal-in { from { opacity: 0; transform: scale(0.94) translateY(8px); } to { opacity: 1; transform: none; } }
+  .modal h3 { margin: 0 0 9px 0; font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; display: flex; align-items: center; gap: 9px; }
+  .modal h3 svg { width: 17px; height: 17px; color: var(--red); }
+  .modal p { margin: 0 0 16px 0; font-size: 13px; color: var(--text-2); line-height: 1.55; }
+  .modal .acts { display: flex; justify-content: flex-end; gap: 9px; }
+
+  /* ================= RESPONSIVE ================= */
+  @media (max-width: 1180px) {
+    .grid.cols-3, .grid.stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .rail { width: 62px; padding: 14px 8px; }
+    .rail .brand-name, .rail .brand-sub, .rail .nav-btn span, .rail .rail-foot .txt { display: none; }
+    .brand { justify-content: center; padding-left: 0; padding-right: 0; }
+    .nav-btn { justify-content: center; padding: 11px 0; }
+    .nav-badge { position: absolute; top: 3px; right: 5px; margin: 0; padding: 0 5px; }
+    .linkline { justify-content: center; }
+  }
+  @media (max-width: 820px) {
+    .app { flex-direction: column; }
+    .rail { position: sticky; top: 0; height: auto; width: 100%; flex-direction: row; align-items: center; border-right: none; border-bottom: 1px solid var(--border); padding: 8px 10px; overflow-x: auto; }
+    .brand { border-bottom: none; margin: 0 6px 0 0; padding: 0 8px 0 0; border-right: 1px solid var(--border); }
+    .nav-btn { width: auto; }
+    .rail-foot { margin: 0 0 0 auto; border-top: none; padding: 0; flex-direction: row; }
+    .cmdbar { position: static; flex-wrap: wrap; }
+    .grid.cols-3, .grid.cols-2, .grid.stats { grid-template-columns: 1fr; }
+    .content { padding: 14px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
 </style>
 </head>
 <body>
-  <h1>ACI BACnet Building Simulation Platform</h1>
-  <div class="subtitle">Phase 4 — Scenario Library &amp; Instructor Panel · <span id="fleet-summary">-</span></div>
 
-  <div class="danger-zone">
-    <div class="toolbar" style="margin-bottom:0;">
-      <strong style="margin-right:12px;">Instructor Emergency Control</strong>
-      <button class="stop" onclick="stopAllSimulation()">STOP ALL SIMULATION (clears every fault, force, and running scenario)</button>
-    </div>
-  </div>
+<!-- ============ SVG ICON SPRITE ============ -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/>
+      <rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/>
+    </symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/><path d="m3 17.5 9 5 9-5"/>
+    </symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/>
+      <circle cx="9" cy="7" r="2.2" fill="var(--surface-1)"/><circle cx="15" cy="12" r="2.2" fill="var(--surface-1)"/><circle cx="7" cy="17" r="2.2" fill="var(--surface-1)"/>
+    </symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3l1.9 5.6L19.5 10.5l-5.6 1.9L12 18l-1.9-5.6L4.5 10.5l5.6-1.9L12 3Z"/>
+      <path d="M19 16.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2Z"/>
+    </symbol>
+    <symbol id="i-scroll" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="4" y="3" width="16" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="13" y2="16"/>
+    </symbol>
+    <symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2v9"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/>
+    </symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7.9 2.5h8.2l5.4 5.4v8.2l-5.4 5.4H7.9l-5.4-5.4V7.9l5.4-5.4Z"/><line x1="9" y1="12" x2="15" y2="12"/>
+    </symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3 2.5 20h19L12 3Z"/><line x1="12" y1="10" x2="12" y2="14"/><circle cx="12" cy="17" r="0.4" fill="currentColor"/>
+    </symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m4.5 12.5 5 5 10-11"/>
+    </symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>
+    </symbol>
+    <symbol id="i-therm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10 13.5V5a2 2 0 1 1 4 0v8.5a4.5 4.5 0 1 1-4 0Z"/><circle cx="12" cy="17.5" r="1.6" fill="currentColor" stroke="none"/>
+    </symbol>
+    <symbol id="i-antenna" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+      <path d="M8.5 15.5a5 5 0 0 1 0-7"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/>
+      <path d="M5.7 18.3a9 9 0 0 1 0-12.6"/><path d="M18.3 5.7a9 9 0 0 1 0 12.6"/>
+    </symbol>
+    <symbol id="i-flask" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9.5 3h5"/><path d="M10.5 3v6l-5.2 9a2 2 0 0 0 1.7 3h10a2 2 0 0 0 1.7-3l-5.2-9V3"/><line x1="7.5" y1="15" x2="16.5" y2="15"/>
+    </symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14.5 6.5a4.5 4.5 0 0 0 6 4.2L13 18.2a2.4 2.4 0 0 1-3.4-3.4l7.5-7.5a4.5 4.5 0 0 0-4.8 1.4"/>
+      <path d="M14.5 6.5 17 4l3 3-2.5 2.5"/>
+    </symbol>
+    <symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 3 10.5 13.5"/><path d="M21 3l-6.8 18-3.7-7.5L3 9.8 21 3Z"/>
+    </symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2.5 4.5 5.5v6c0 4.6 3.2 8 7.5 9.5 4.3-1.5 7.5-4.9 7.5-9.5v-6L12 2.5Z"/>
+    </symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 3v4h-4"/>
+    </symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/>
+    </symbol>
+    <symbol id="i-hand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M8 12V5.5a1.5 1.5 0 0 1 3 0V11m0-5.5v-1a1.5 1.5 0 0 1 3 0V11m0-4.5a1.5 1.5 0 0 1 3 0V13m0-3a1.5 1.5 0 0 1 3 0v4a7 7 0 0 1-7 7h-1.2a7 7 0 0 1-5.6-2.8L4.2 15a1.6 1.6 0 0 1 2.6-2l1.2 1.7"/>
+    </symbol>
+  </defs>
+</svg>
 
-  <div class="tabs">
-    <button class="tab-btn active" onclick="showTab('dashboard', this)">Dashboard</button>
-    <button class="tab-btn" onclick="showTab('points', this)">Equipment &amp; Points</button>
-    <button class="tab-btn" onclick="showTab('instructor', this)">Instructor Panel</button>
-    <button class="tab-btn" onclick="showTab('llm', this)">LLM Console</button>
-    <button class="tab-btn" onclick="showTab('logs', this)">Logs</button>
-  </div>
-
-  <div id="tab-dashboard" class="tab-panel active">
-  <div class="grid">
-    <div class="card">
-      <h2>Simulation</h2>
-      <div class="row"><span class="label">Status</span><span class="value"><span id="sim-pill" class="pill stopped">stopped</span></span></div>
-      <div class="row"><span class="label">Simulated time elapsed</span><span class="value" id="sim-elapsed">-</span></div>
-      <div class="row"><span class="label">Tick count</span><span class="value" id="sim-ticks">-</span></div>
-      <div style="margin-top:12px;">
-        <button onclick="startSim()">Start</button>
-        <button class="stop" onclick="stopSim()">Stop Engine</button>
+<div class="app">
+  <!-- ============ LEFT RAIL ============ -->
+  <aside class="rail" aria-label="Primary navigation">
+    <div class="brand">
+      <div class="brand-mark">ACI</div>
+      <div>
+        <div class="brand-name">COMMAND</div>
+        <div class="brand-sub">BACNET SIM STATION</div>
       </div>
     </div>
-
-    <div class="card">
-      <h2>Network</h2>
-      <div class="row"><span class="label">BACnet device</span><span class="value" id="net-device">-</span></div>
-      <div class="row"><span class="label">Bind address</span><span class="value" id="net-bind">-</span></div>
-      <div class="row"><span class="label">Mode</span><span class="value"><span class="pill lab" id="net-lab">-</span></span></div>
-      <div class="row"><span class="label">Equipment groups</span><span class="value" id="net-devices">-</span></div>
-      <div class="row"><span class="label">Total BACnet objects</span><span class="value" id="net-points">-</span></div>
-      <div class="row"><span class="label">Messages received</span><span class="value" id="net-msgs">-</span></div>
+    <button class="nav-btn active" data-view="overview">
+      <svg><use href="#i-grid"/></svg><span>Overview</span>
+    </button>
+    <button class="nav-btn" data-view="equipment">
+      <svg><use href="#i-layers"/></svg><span>Equipment</span>
+    </button>
+    <button class="nav-btn" data-view="ops">
+      <svg><use href="#i-sliders"/></svg><span>Operations</span>
+      <span class="nav-badge" id="nav-fault-badge" hidden>0</span>
+    </button>
+    <button class="nav-btn" data-view="ai">
+      <svg><use href="#i-spark"/></svg><span>AI Console</span>
+    </button>
+    <button class="nav-btn" data-view="logs">
+      <svg><use href="#i-scroll"/></svg><span>Logs</span>
+    </button>
+    <div class="rail-foot">
+      <div class="linkline"><span class="led" id="link-led"></span><span class="txt" id="link-txt">LINK&nbsp;&mdash;</span></div>
+      <div class="linkline"><span class="txt">POLL&nbsp;2.5s&nbsp;&middot;&nbsp;REST</span></div>
     </div>
+  </aside>
 
-    <div class="card">
-      <h2>Site Conditions</h2>
-      <div class="toolbar">
-        <label>OA Temp (&deg;F)</label>
-        <input type="number" id="oa-temp-input" value="70" style="width:70px;">
-        <label>OA Humidity (%)</label>
-        <input type="number" id="oa-humidity-input" value="50" style="width:60px;">
-        <button onclick="setWeather()">Apply</button>
+  <div class="main">
+    <!-- ============ COMMAND BAR ============ -->
+    <header class="cmdbar">
+      <div class="cmd-title">
+        <h1>ACI BUILDING SIMULATION COMMAND</h1>
+        <div class="sub" id="cmd-sub">supervisory device &mdash; awaiting telemetry</div>
       </div>
-      <div class="row"><span class="label">Note</span><span class="value" style="color:#8b95a5;font-size:12px;">Instructor-adjustable, transitions smoothly rather than jumping</span></div>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Active Scenario</h2>
-    <div id="scenario-status-dashboard" class="row"><span class="label">None running</span></div>
-  </div>
-  </div><!-- /tab-dashboard -->
-
-  <div id="tab-points" class="tab-panel">
-  <div class="card" style="margin-bottom:20px;">
-    <h2>Equipment Groups <span style="color:#8b95a5;font-weight:400;text-transform:none;font-size:11px;">(organizational only — all one BACnet device on 47808)</span></h2>
-    <div class="table-scroll">
-      <table>
-        <thead><tr><th>Group</th><th>Instance Offset</th><th>Points</th><th>Description</th></tr></thead>
-        <tbody id="devices-body"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="card" style="margin-bottom:20px;">
-    <h2>Live Points</h2>
-    <div class="toolbar">
-      <label>Filter by group</label>
-      <select id="device-filter" onchange="refresh()"><option value="">All groups</option></select>
-    </div>
-    <div class="table-scroll">
-      <table>
-        <thead><tr><th>Group</th><th>Point</th><th>BACnet Object</th><th>Direction</th><th>Value</th><th>Units</th><th>Status</th></tr></thead>
-        <tbody id="points-body"></tbody>
-      </table>
-    </div>
-  </div>
-  </div><!-- /tab-points -->
-
-  <div id="tab-instructor" class="tab-panel">
-  <div class="grid" style="grid-template-columns: 1fr 1fr;">
-    <div class="card">
-      <h2>Scenarios</h2>
-      <div id="scenario-status-panel" class="scenario-card" style="display:none;"></div>
-      <div id="scenario-list"></div>
-    </div>
-
-    <div class="card">
-      <h2>Manual Fault Injection</h2>
-      <div class="toolbar">
-        <select id="fault-group"><option value="">(transport-level, whole device)</option></select>
-        <input type="text" id="fault-alias" placeholder="point alias (e.g. chws_temp)" list="fault-alias-options" style="width:180px;">
-        <datalist id="fault-alias-options"></datalist>
+      <div class="cmd-metrics">
+        <span class="chip" title="Equipment groups / BACnet objects"><b id="m-fleet">&mdash;</b>&nbsp;GRP&nbsp;/&nbsp;<b id="m-points">&mdash;</b>&nbsp;OBJ</span>
+        <span class="chip" id="m-faults-chip"><b id="m-faults">&mdash;</b>&nbsp;FAULTS</span>
+        <span class="chip" title="Simulated time elapsed">SIM&nbsp;<b id="m-simclock">00:00:00</b></span>
+        <span class="chip" title="Local time">CLK&nbsp;<b id="m-clock">--:--:--</b></span>
       </div>
-      <div class="toolbar">
-        <select id="fault-type"></select>
-        <input type="number" id="fault-value" placeholder="value" style="width:80px;">
-        <input type="number" id="fault-rate" placeholder="rate/sec (drift only)" style="width:120px;">
-        <button onclick="applyFault()">Activate Fault</button>
-      </div>
-      <div class="row"><span class="label" style="font-size:11.5px;">Value = offset amount, stuck/forced value (1/0 for booleans), or reliability_fail reading. Rate/sec only applies to drift.</span></div>
-      <h3 style="font-size:12px;color:#8b95a5;margin:14px 0 6px 0;">Active Faults</h3>
-      <div id="active-faults-list"></div>
-      <button onclick="clearAllFaults()" style="margin-top:8px;background:#b45309;">Clear All Faults</button>
-    </div>
-  </div>
+      <button class="btn-stopall" id="btn-stopall" aria-label="Stop all simulation, clear every fault, force and scenario">
+        <svg><use href="#i-stop"/></svg>STOP ALL
+      </button>
+    </header>
 
-  <div class="card">
-    <h2>Force / Release Value</h2>
-    <div class="toolbar">
-      <select id="force-group"></select>
-      <input type="text" id="force-alias" placeholder="point alias" list="force-alias-options" style="width:180px;">
-      <datalist id="force-alias-options"></datalist>
-      <input type="text" id="force-value" placeholder="value (number or true/false)" style="width:160px;">
-      <button onclick="forceValue()">Force</button>
-      <button onclick="releaseValue()" style="background:#4b5563;">Release</button>
-    </div>
-    <div class="row"><span class="label" style="font-size:11.5px;">Writable points get a real BACnet write (priority 3); non-writable sensor points use a stuck-value output override instead.</span></div>
-  </div>
-  </div><!-- /tab-instructor -->
+    <main class="content">
 
-  <div id="tab-llm" class="tab-panel">
-  <div class="grid" style="grid-template-columns: 1fr 1fr;">
-    <div class="card">
-      <h2>Ollama Connection</h2>
-      <div class="row"><span class="label">Status</span><span class="value"><span id="llm-status-pill" class="pill stopped">checking...</span></span></div>
-      <div class="row"><span class="label">Host</span><span class="value" id="llm-host">-</span></div>
-      <div class="row"><span class="label">Configured model</span><span class="value" id="llm-model">-</span></div>
-      <div class="row"><span class="label">Available models</span><span class="value" id="llm-available-models">-</span></div>
-      <div style="margin-top:10px;"><button onclick="refreshLlmStatus()">Test Connection</button></div>
-    </div>
-    <div class="card">
-      <h2>Scope (Phase 6a)</h2>
-      <div class="row"><span class="label" style="font-size:12px;">
-        This console can create scenarios, inject/clear faults, adjust site weather, and explain
-        simulator behavior -- all through the same code paths as the Instructor Panel. It cannot
-        add, modify, or remove simulated equipment, and cannot issue direct BACnet commands.
-        Every proposal is previewed here before anything is applied.
-      </span></div>
-    </div>
-  </div>
+      <!-- ============ VIEW: OVERVIEW ============ -->
+      <section id="view-overview" class="view active">
+        <div class="grid stats">
+          <div class="stat"><div class="lbl">Equipment Groups</div><div class="val" id="st-groups">&mdash;</div></div>
+          <div class="stat"><div class="lbl">BACnet Objects</div><div class="val" id="st-points">&mdash;</div></div>
+          <div class="stat" id="st-faults-tile"><div class="lbl">Active Faults</div><div class="val" id="st-faults">&mdash;</div></div>
+          <div class="stat"><div class="lbl">Messages In</div><div class="val" id="st-msgs">&mdash;</div></div>
+        </div>
 
-  <div class="card" style="margin-bottom:20px;">
-    <h2>Ask the Assistant</h2>
-    <div class="toolbar">
-      <textarea id="llm-prompt" placeholder="e.g. Create a scenario where Chiller-2's CHWS sensor drifts high over 3 minutes after it's been running for a minute" style="width:100%;min-height:70px;background:#0e1116;border:1px solid #2a2f3a;color:#e6e9ee;border-radius:6px;padding:10px;font-family:inherit;"></textarea>
-    </div>
-    <div class="toolbar">
-      <button onclick="proposeLlmAction()">Propose</button>
-      <span id="llm-propose-status" style="color:#8b95a5;font-size:12px;"></span>
-    </div>
-  </div>
+        <div class="grid cols-3">
+          <div class="panel">
+            <div class="panel-head"><svg><use href="#i-power"/></svg><h2>Simulation Engine</h2></div>
+            <div class="master-line">
+              <label class="switch" id="engine-switch" title="Start / stop the simulation engine">
+                <input type="checkbox" id="engine-toggle" aria-label="Simulation engine power">
+                <span class="knob"></span>
+              </label>
+              <span class="state-lbl" id="engine-state">ENGINE STANDBY</span>
+            </div>
+            <div class="row"><span class="k">Simulated elapsed</span><span class="v" id="sim-elapsed">&mdash;</span></div>
+            <div class="row"><span class="k">Tick count</span><span class="v" id="sim-ticks">&mdash;</span></div>
+            <div class="row"><span class="k">Equipment models</span><span class="v" id="sim-equip">&mdash;</span></div>
+            <div class="row">
+              <span class="k">Time rate</span>
+              <span class="seg" id="speed-seg" role="group" aria-label="Simulation speed multiplier"></span>
+            </div>
+          </div>
 
-  <div id="llm-preview-card" class="card" style="margin-bottom:20px;display:none;">
-    <h2>Proposed Action <span id="llm-valid-pill" class="pill"></span></h2>
-    <div id="llm-preview-body"></div>
-    <div class="toolbar" style="margin-top:10px;">
-      <button id="llm-approve-btn" onclick="applyLlmAction()">Approve &amp; Apply</button>
-      <button onclick="dismissLlmPreview()" style="background:#4b5563;">Dismiss</button>
-    </div>
-  </div>
+          <div class="panel">
+            <div class="panel-head"><svg><use href="#i-antenna"/></svg><h2>Network / BACnet</h2></div>
+            <div class="row"><span class="k">Device</span><span class="v" id="net-device">&mdash;</span></div>
+            <div class="row"><span class="k">Instance</span><span class="v" id="net-instance">&mdash;</span></div>
+            <div class="row"><span class="k">Bind address</span><span class="v" id="net-bind">&mdash;</span></div>
+            <div class="row"><span class="k">UDP port</span><span class="v" id="net-port">&mdash;</span></div>
+            <div class="row"><span class="k">Mode</span><span class="v"><span class="pill info" id="net-mode">&mdash;</span></span></div>
+            <div class="row"><span class="k">Last command in</span><span class="v" id="net-lastcmd">&mdash;</span></div>
+            <div class="row"><span class="k">Uptime</span><span class="v" id="net-uptime">&mdash;</span></div>
+          </div>
 
-  <div class="card">
-    <h2>Audit Trail</h2>
-    <div class="table-scroll">
-      <table>
-        <thead><tr><th>Time</th><th>Event</th><th>Request</th><th>Detail</th></tr></thead>
-        <tbody id="llm-audit-body"></tbody>
-      </table>
-    </div>
-  </div>
-  </div><!-- /tab-llm -->
+          <div class="panel">
+            <div class="panel-head"><svg><use href="#i-therm"/></svg><h2>Site Conditions</h2></div>
+            <div class="row"><span class="k">Outdoor air temp</span><span class="v" id="site-oa-temp">&mdash;</span></div>
+            <div class="row" style="margin-bottom:10px;"><span class="k">Outdoor air humidity</span><span class="v" id="site-oa-rh">&mdash;</span></div>
+            <div class="controls-line" style="margin-bottom:6px;">
+              <div class="field"><label for="oa-temp-input">Target &deg;F</label><input type="number" id="oa-temp-input" value="70" style="width:88px;"></div>
+              <div class="field"><label for="oa-humidity-input">Target %RH</label><input type="number" id="oa-humidity-input" value="50" style="width:88px;"></div>
+              <button class="btn primary" id="btn-weather">Apply</button>
+            </div>
+            <div class="panel-note">Targets ramp in smoothly rather than stepping &mdash; use for seasonal training conditions.</div>
+          </div>
+        </div>
 
-  <div id="tab-logs" class="tab-panel">
-  <div class="grid" style="grid-template-columns: 1fr 1fr;">
-    <div class="card">
-      <h2>Application Log</h2>
-      <div class="log-box" id="log-app"></div>
-    </div>
-    <div class="card">
-      <h2>BACnet Traffic</h2>
-      <div class="log-box" id="log-bacnet"></div>
+        <div class="panel">
+          <div class="panel-head"><svg><use href="#i-flask"/></svg><h2>Active Scenario</h2></div>
+          <div id="scn-overview"><div class="panel-note">No scenario running.</div></div>
+        </div>
+      </section>
+
+      <!-- ============ VIEW: EQUIPMENT ============ -->
+      <section id="view-equipment" class="view">
+        <div class="panel">
+          <div class="panel-head">
+            <svg><use href="#i-layers"/></svg><h2>Equipment Groups</h2>
+            <span class="spacer"></span>
+            <span class="panel-note">organizational only &mdash; all one BACnet device</span>
+          </div>
+          <div class="tablewrap" style="max-height:300px;">
+            <table>
+              <thead><tr><th>Group</th><th>Instance Offset</th><th>Points</th><th>Description</th></tr></thead>
+              <tbody id="groups-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <svg><use href="#i-grid"/></svg><h2>Live Points</h2>
+            <span class="spacer"></span>
+          </div>
+          <div class="controls-line">
+            <div class="field">
+              <label for="filter-group">Group</label>
+              <select id="filter-group"><option value="">All groups</option></select>
+            </div>
+            <div class="field" style="flex:1;min-width:180px;">
+              <label for="filter-search">Search</label>
+              <input type="search" id="filter-search" placeholder="name, alias, or object&hellip;">
+            </div>
+          </div>
+          <div class="tablewrap">
+            <table>
+              <thead><tr><th>Group</th><th>Point</th><th>Object</th><th>Direction</th><th>Value</th><th>Units</th><th>Status</th></tr></thead>
+              <tbody id="points-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ VIEW: OPERATIONS ============ -->
+      <section id="view-ops" class="view">
+        <div class="grid cols-2">
+          <div class="panel">
+            <div class="panel-head">
+              <svg><use href="#i-flask"/></svg><h2>Training Scenarios</h2>
+              <span class="spacer"></span>
+              <button class="btn ghost sm" id="btn-scn-stop">Stop</button>
+              <button class="btn danger sm" id="btn-scn-reset">Reset</button>
+            </div>
+            <div id="scn-live-panel"></div>
+            <div id="scn-list"><div class="panel-note">Loading scenario library&hellip;</div></div>
+          </div>
+
+          <div>
+            <div class="panel">
+              <div class="panel-head"><svg><use href="#i-wrench"/></svg><h2>Manual Fault Injection</h2></div>
+              <div class="controls-line">
+                <div class="field">
+                  <label for="fault-group">Group</label>
+                  <select id="fault-group"><option value="">(transport-level, whole device)</option></select>
+                </div>
+                <div class="field" style="flex:1;min-width:160px;">
+                  <label for="fault-alias">Point alias</label>
+                  <input type="text" id="fault-alias" placeholder="e.g. chws_temp" list="fault-alias-options">
+                  <datalist id="fault-alias-options"></datalist>
+                </div>
+              </div>
+              <div class="controls-line">
+                <div class="field">
+                  <label for="fault-type">Fault mechanic</label>
+                  <select id="fault-type"></select>
+                </div>
+                <div class="field"><label for="fault-value">Value</label><input type="number" id="fault-value" placeholder="&mdash;" style="width:90px;"></div>
+                <div class="field"><label for="fault-rate">Rate /s</label><input type="number" id="fault-rate" placeholder="drift" style="width:80px;"></div>
+                <button class="btn primary" id="btn-fault-apply"><svg><use href="#i-alert"/></svg>Activate</button>
+              </div>
+              <div class="panel-note" style="margin-bottom:4px;">
+                Value = offset amount, stuck/forced value (1/0 for booleans), or reliability-fail reading. Rate applies to drift only.
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head">
+                <svg><use href="#i-alert"/></svg><h2>Active Faults</h2>
+                <span class="spacer"></span>
+                <button class="btn danger sm" id="btn-clear-all">Clear All</button>
+              </div>
+              <div id="faults-list"><div class="panel-note">No active faults.</div></div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-head"><svg><use href="#i-hand"/></svg><h2>Force / Release Value</h2></div>
+              <div class="controls-line">
+                <div class="field">
+                  <label for="force-group">Group</label>
+                  <select id="force-group"></select>
+                </div>
+                <div class="field" style="flex:1;min-width:140px;">
+                  <label for="force-alias">Point alias</label>
+                  <input type="text" id="force-alias" placeholder="point alias" list="force-alias-options">
+                  <datalist id="force-alias-options"></datalist>
+                </div>
+                <div class="field"><label for="force-value">Value</label><input type="text" id="force-value" placeholder="number / true / false" style="width:130px;"></div>
+                <button class="btn primary" id="btn-force">Force</button>
+                <button class="btn ghost" id="btn-release">Release</button>
+              </div>
+              <div class="panel-note">
+                Writable points get a real BACnet write at priority 3; non-writable sensors use a stuck-value override instead.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ VIEW: AI CONSOLE ============ -->
+      <section id="view-ai" class="view">
+        <div class="grid cols-2">
+          <div class="panel">
+            <div class="panel-head">
+              <svg><use href="#i-antenna"/></svg><h2>Ollama Link</h2>
+              <span class="spacer"></span>
+              <button class="btn ghost sm" id="btn-llm-test"><svg id="llm-test-icon"><use href="#i-refresh"/></svg>Test</button>
+            </div>
+            <div class="row"><span class="k">Status</span><span class="v"><span class="pill bad" id="llm-pill">checking&hellip;</span></span></div>
+            <div class="row"><span class="k">Host</span><span class="v" id="llm-host">&mdash;</span></div>
+            <div class="row"><span class="k">Configured model</span><span class="v" id="llm-model">&mdash;</span></div>
+            <div class="row"><span class="k">Available models</span><span class="v" id="llm-models">&mdash;</span></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><svg><use href="#i-shield"/></svg><h2>Operating Envelope &mdash; Phase 6a</h2></div>
+            <div class="panel-note" style="font-size:12.5px;">
+              This console can create scenarios, inject and clear faults, adjust site weather, and explain
+              simulator behavior &mdash; through the same validated code paths as the Operations panel.
+              It cannot add, modify, or remove simulated equipment, and it cannot issue raw BACnet commands.
+              Every proposal is previewed below and requires your explicit approval before anything is applied.
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><svg><use href="#i-spark"/></svg><h2>Ask the Assistant</h2></div>
+          <div class="field">
+            <label for="llm-prompt">Instructor request</label>
+            <textarea id="llm-prompt" rows="3" placeholder="e.g. Create a scenario where Chiller-2's CHWS sensor drifts high over 3 minutes after it's been running for a minute"></textarea>
+          </div>
+          <div class="controls-line" style="margin-top:11px;margin-bottom:0;">
+            <button class="btn accent" id="btn-propose"><svg id="propose-icon"><use href="#i-send"/></svg>Propose</button>
+            <span class="panel-note" id="propose-status"></span>
+          </div>
+        </div>
+
+        <div class="panel llm-preview" id="llm-preview" hidden>
+          <div class="panel-head">
+            <svg><use href="#i-spark"/></svg><h2>Proposed Action</h2>
+            <span class="spacer"></span>
+            <span class="pill" id="llm-valid-pill">&mdash;</span>
+          </div>
+          <div id="llm-preview-body"></div>
+          <div class="controls-line" style="margin-top:13px;margin-bottom:0;">
+            <button class="btn primary" id="btn-llm-apply"><svg><use href="#i-check"/></svg>Approve &amp; Apply</button>
+            <button class="btn ghost" id="btn-llm-dismiss">Dismiss</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head"><svg><use href="#i-scroll"/></svg><h2>Audit Trail</h2></div>
+          <div class="tablewrap" style="max-height:320px;">
+            <table>
+              <thead><tr><th>Time</th><th>Event</th><th>Request</th><th>Detail</th></tr></thead>
+              <tbody id="audit-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ VIEW: LOGS ============ -->
+      <section id="view-logs" class="view">
+        <div class="grid cols-2">
+          <div class="panel">
+            <div class="panel-head">
+              <svg><use href="#i-scroll"/></svg><h2>Application Log</h2>
+              <span class="spacer"></span>
+              <label class="follow-lbl"><input type="checkbox" id="follow-app" checked>FOLLOW</label>
+            </div>
+            <div class="logbox" id="log-app" aria-live="off"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <svg><use href="#i-antenna"/></svg><h2>BACnet Traffic</h2>
+              <span class="spacer"></span>
+              <label class="follow-lbl"><input type="checkbox" id="follow-bacnet" checked>FOLLOW</label>
+            </div>
+            <div class="logbox" id="log-bacnet" aria-live="off"></div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<!-- ============ TOASTS & MODAL ============ -->
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<div class="modal-backdrop" id="modal" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <h3 id="modal-title"><svg><use href="#i-alert"/></svg><span id="modal-heading">Confirm</span></h3>
+    <p id="modal-text"></p>
+    <div class="acts">
+      <button class="btn ghost" id="modal-cancel">Cancel</button>
+      <button class="btn danger" id="modal-confirm">Confirm</button>
     </div>
   </div>
-  </div><!-- /tab-logs -->
+</div>
 
 <script>
-let deviceListPopulated = false;
-let selectorsPopulated = false;
-let pointsByGroup = {}; // group_id -> [alias, ...] for datalist population
+'use strict';
+
+/* ================= helpers ================= */
+const $ = (id) => document.getElementById(id);
 
 async function fetchJSON(url, opts) {
   const r = await fetch(url, opts);
-  return await r.json();
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || (r.status + ' ' + r.statusText));
+  return data;
 }
 
-function dirClass(d) {
-  return d === 'sim_to_webctrl' ? 'dir-sim' : (d === 'webctrl_to_sim' ? 'dir-webctrl' : '');
-}
-function dirLabel(d) {
-  return { sim_to_webctrl: 'sim -> WebCTRL', webctrl_to_sim: 'WebCTRL -> sim' }[d] || d;
-}
-
-function showTab(name, btn) {
-  document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  btn.classList.add('active');
+function fmtDuration(totalSeconds) {
+  const s = Math.floor(totalSeconds);
+  const d = Math.floor(s / 86400);
+  const h = String(Math.floor((s % 86400) / 3600)).padStart(2, '0');
+  const m = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  const sec = String(s % 60).padStart(2, '0');
+  return (d > 0 ? d + 'd ' : '') + h + ':' + m + ':' + sec;
 }
 
-function renderScenarioStatus(scenario, targetId) {
-  const el = document.getElementById(targetId);
-  if (!scenario.running && scenario.status !== 'completed') {
-    if (targetId === 'scenario-status-panel') { el.style.display = 'none'; }
-    else { el.innerHTML = '<span class="label">None running</span>'; }
-    return;
-  }
-  if (targetId === 'scenario-status-panel') el.style.display = 'block';
-  const next = scenario.next_event
-    ? `Next event at t+${scenario.next_event.time_seconds}s: ${scenario.next_event.description}`
-    : 'All events fired';
-  el.innerHTML = `
-    <h3>${scenario.title || scenario.scenario_id} <span class="pill ${scenario.status === 'running' ? 'running' : 'stopped'}">${scenario.status}</span></h3>
-    <p>Elapsed: ${scenario.elapsed_seconds}s &middot; Events: ${scenario.events_fired}/${scenario.events_total}</p>
-    <p>${next}</p>
-  `;
+function fmtValue(v) {
+  if (typeof v === 'boolean') return v ? 'ON' : 'OFF';
+  const n = Number(v);
+  return isNaN(n) ? String(v) : n.toFixed(1);
 }
 
-async function refresh() {
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+}
+
+/* ---- toasts ---- */
+function toast(msg, kind = 'ok') {
+  const box = $('toasts');
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind;
+  const icon = kind === 'ok' ? 'i-check' : (kind === 'warn' ? 'i-alert' : 'i-x');
+  el.innerHTML = `<svg><use href="#${icon}"/></svg><span>${esc(msg)}</span>`;
+  box.appendChild(el);
+  while (box.children.length > 4) box.firstChild.remove();
+  setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 200); }, 3800);
+}
+
+/* ---- confirm modal ---- */
+let modalAction = null;
+function confirmAction(heading, text, onConfirm) {
+  modalAction = onConfirm;
+  $('modal-heading').textContent = heading;
+  $('modal-text').textContent = text;
+  $('modal').hidden = false;
+  $('modal-confirm').focus();
+}
+function closeModal() { $('modal').hidden = true; modalAction = null; }
+$('modal-cancel').addEventListener('click', closeModal);
+$('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('modal').hidden) closeModal(); });
+$('modal-confirm').addEventListener('click', () => {
+  const fn = modalAction;
+  closeModal();
+  if (fn) fn();
+});
+
+/* ---- action wrapper: disable button, toast on failure ---- */
+async function runAction(btn, fn, okMsg) {
+  if (btn) btn.disabled = true;
   try {
-    const status = await fetchJSON('/api/status');
-    document.getElementById('fleet-summary').textContent =
-      status.fleet.group_count + ' equipment groups · ' + status.fleet.total_point_count + ' BACnet objects · ' +
-      status.active_fault_count + ' active fault' + (status.active_fault_count === 1 ? '' : 's');
-    document.getElementById('sim-pill').textContent = status.simulation.running ? 'running' : 'stopped';
-    document.getElementById('sim-pill').className = 'pill ' + (status.simulation.running ? 'running' : 'stopped');
-    document.getElementById('sim-elapsed').textContent = status.simulation.simulated_seconds_elapsed + ' s';
-    document.getElementById('sim-ticks').textContent = status.simulation.tick_count;
-    document.getElementById('net-device').textContent = status.device.name + ' (instance ' + status.device.instance + ', port ' + status.device.udp_port + ')';
-    document.getElementById('net-bind').textContent = status.device.bind_address;
-    document.getElementById('net-lab').textContent = status.device.private_lab_mode ? 'PRIVATE LAB MODE' : 'open';
-    document.getElementById('net-devices').textContent = status.fleet.group_count;
-    document.getElementById('net-points').textContent = status.fleet.total_point_count;
-    document.getElementById('net-msgs').textContent = status.bacnet.messages_in;
+    await fn();
+    if (okMsg) toast(okMsg, 'ok');
+  } catch (e) {
+    toast('Failed: ' + e.message, 'err');
+  } finally {
+    if (btn) btn.disabled = false;
+    refresh();
+  }
+}
 
-    renderScenarioStatus(status.scenario, 'scenario-status-dashboard');
-    renderScenarioStatus(status.scenario, 'scenario-status-panel');
+/* ================= view switching ================= */
+document.querySelectorAll('.nav-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-btn').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach((v) => v.classList.remove('active'));
+    btn.classList.add('active');
+    const view = $('view-' + btn.dataset.view);
+    view.classList.remove('active');
+    void view.offsetWidth; /* restart entry animation */
+    view.classList.add('active');
+  });
+});
 
-    const devBody = document.getElementById('devices-body');
-    devBody.innerHTML = '';
+/* ================= wall clock ================= */
+setInterval(() => {
+  $('m-clock').textContent = new Date().toLocaleTimeString('en-US', { hour12: false });
+}, 1000);
+
+/* ================= poll state ================= */
+let groupsPopulated = false;
+let faultTypesPopulated = false;
+let scenariosPopulated = false;
+let pointsByGroup = {};          // group_id -> [alias, ...]
+let pointRows = new Map();       // "group.alias" -> {tr, valEl, statusEl, lastVal, lastStatus}
+let lastRowSetKey = '';
+let linkUp = null;
+
+const SPEED_STEPS = [1, 2, 5, 10, 30, 60];
+
+function setLink(up) {
+  if (up === linkUp) return;
+  linkUp = up;
+  $('link-led').className = 'led ' + (up ? 'on' : 'off');
+  $('link-txt').textContent = up ? 'LINK OK' : 'LINK DOWN';
+  if (!up) toast('Lost connection to simulator API', 'err');
+}
+
+/* ================= renderers ================= */
+function renderStatus(status) {
+  const sim = status.simulation;
+  const running = sim.running;
+
+  $('cmd-sub').textContent =
+    status.device.name + ' · instance ' + status.device.instance +
+    ' · ' + status.device.bind_address + ':' + status.device.udp_port;
+
+  $('m-fleet').textContent = status.fleet.group_count;
+  $('m-points').textContent = status.fleet.total_point_count;
+  $('m-faults').textContent = status.active_fault_count;
+  $('m-faults-chip').classList.toggle('alert', status.active_fault_count > 0);
+  $('m-simclock').textContent = fmtDuration(sim.simulated_seconds_elapsed);
+
+  $('st-groups').textContent = status.fleet.group_count;
+  $('st-points').textContent = status.fleet.total_point_count;
+  $('st-faults').textContent = status.active_fault_count;
+  $('st-faults-tile').classList.toggle('hot', status.active_fault_count > 0);
+  $('st-msgs').textContent = status.bacnet.messages_in;
+
+  const badge = $('nav-fault-badge');
+  badge.hidden = status.active_fault_count === 0;
+  badge.textContent = status.active_fault_count;
+
+  /* engine panel */
+  $('engine-toggle').checked = running;
+  $('engine-switch').classList.toggle('on', running);
+  const stateLbl = $('engine-state');
+  stateLbl.textContent = running ? 'ENGINE RUNNING' : 'ENGINE STANDBY';
+  stateLbl.classList.toggle('on', running);
+  $('sim-elapsed').textContent = fmtDuration(sim.simulated_seconds_elapsed);
+  $('sim-ticks').textContent = sim.tick_count;
+  $('sim-equip').textContent = sim.equipment_count;
+
+  /* speed segmented control */
+  const seg = $('speed-seg');
+  if (!seg.childElementCount) {
+    for (const s of SPEED_STEPS) {
+      const b = document.createElement('button');
+      b.textContent = '×' + s;
+      b.addEventListener('click', () =>
+        runAction(b, () => fetchJSON('/api/simulation/speed/' + s, { method: 'POST' }), 'Time rate set to ×' + s));
+      seg.appendChild(b);
+    }
+  }
+  const current = Math.round(sim.speed_multiplier);
+  [...seg.children].forEach((b, i) => b.classList.toggle('active', SPEED_STEPS[i] === current));
+
+  /* network panel */
+  $('net-device').textContent = status.device.name;
+  $('net-instance').textContent = status.device.instance;
+  $('net-bind').textContent = status.device.bind_address;
+  $('net-port').textContent = status.device.udp_port + '/udp';
+  $('net-mode').textContent = status.device.private_lab_mode ? 'PRIVATE LAB' : 'OPEN';
+  $('net-lastcmd').textContent = status.bacnet.last_command_received || 'none yet';
+  $('net-uptime').textContent = fmtDuration(status.uptime_seconds);
+
+  /* scenario (overview + ops live panel) */
+  renderScenario(status.scenario);
+
+  /* groups table + selects, once */
+  if (!groupsPopulated) {
+    const body = $('groups-body');
+    body.innerHTML = '';
     for (const g of status.groups) {
       const tr = document.createElement('tr');
-      tr.innerHTML = `<td>${g.group_id}</td><td>${g.instance_offset}</td><td>${g.point_count}</td><td style="color:#8b95a5;">${g.description}</td>`;
-      devBody.appendChild(tr);
+      tr.innerHTML = `<td class="mono">${esc(g.group_id)}</td><td class="mono">${g.instance_offset}</td>` +
+        `<td class="mono">${g.point_count}</td><td class="dim">${esc(g.description)}</td>`;
+      body.appendChild(tr);
     }
-
-    if (!deviceListPopulated) {
-      const sel = document.getElementById('device-filter');
+    for (const selId of ['filter-group', 'fault-group', 'force-group']) {
+      const sel = $(selId);
       for (const g of status.groups) {
         const opt = document.createElement('option');
-        opt.value = g.group_id; opt.textContent = g.group_id;
+        opt.value = g.group_id;
+        opt.textContent = g.group_id;
         sel.appendChild(opt);
       }
-      deviceListPopulated = true;
     }
+    groupsPopulated = true;
+  }
+}
 
-    if (!selectorsPopulated) {
-      for (const selId of ['fault-group', 'force-group']) {
-        const sel = document.getElementById(selId);
-        for (const g of status.groups) {
-          const opt = document.createElement('option');
-          opt.value = g.group_id; opt.textContent = g.group_id;
-          sel.appendChild(opt);
-        }
-      }
-      const faultTypes = await fetchJSON('/api/fault-types');
-      const ftSel = document.getElementById('fault-type');
-      for (const t of faultTypes) {
-        const opt = document.createElement('option');
-        opt.value = t; opt.textContent = t;
-        ftSel.appendChild(opt);
-      }
-      const scenarios = await fetchJSON('/api/scenarios');
-      const listEl = document.getElementById('scenario-list');
-      listEl.innerHTML = '';
-      for (const s of scenarios) {
-        const div = document.createElement('div');
-        div.className = 'scenario-card';
-        div.innerHTML = `
-          <h3>${s.title}</h3>
-          <p>${s.description}</p>
-          <p><em>${s.event_count} timed event(s)</em></p>
-          <button onclick="startScenario('${s.scenario_id}')">Run</button>
-        `;
-        listEl.appendChild(div);
-      }
-      document.getElementById('scenario-list').insertAdjacentHTML('afterbegin',
-        '<div class="toolbar"><button onclick="stopScenario()" style="background:#4b5563;">Stop</button><button onclick="resetScenario()" style="background:#b45309;">Reset (clears faults too)</button></div>');
-      selectorsPopulated = true;
+let lastScnKey = null;
+function renderScenario(scn) {
+  const over = $('scn-overview');
+  const live = $('scn-live-panel');
+  if (!scn.running && scn.status !== 'completed') {
+    if (lastScnKey !== 'none') {
+      over.innerHTML = '<div class="panel-note">No scenario running.</div>';
+      live.innerHTML = '';
+      lastScnKey = 'none';
     }
+    return;
+  }
+  const key = (scn.scenario_id || scn.title) + '|' + scn.status;
+  if (key !== lastScnKey) {
+    /* structure rebuilt only when the scenario or its status changes */
+    const pill = scn.status === 'running' ? 'ok' : 'info';
+    const html = `
+      <div class="scn-live">
+        <h3>${esc(scn.title || scn.scenario_id)} <span class="pill ${pill}">${esc(scn.status)}</span></h3>
+        <div class="meta scn-meta">&mdash;</div>
+        <div class="progress"><div style="width:0%"></div></div>
+        <div class="meta scn-next">&mdash;</div>
+      </div>`;
+    over.innerHTML = html;
+    live.innerHTML = html;
+    lastScnKey = key;
+  }
+  const pct = scn.events_total ? Math.round((scn.events_fired / scn.events_total) * 100) : 0;
+  const meta = 'ELAPSED ' + fmtDuration(scn.elapsed_seconds) + ' · EVENTS ' + scn.events_fired + '/' + scn.events_total;
+  const next = scn.next_event
+    ? 'Next @ t+' + scn.next_event.time_seconds + 's — ' + scn.next_event.description
+    : 'All events fired';
+  for (const root of [over, live]) {
+    const m = root.querySelector('.scn-meta');
+    if (!m) continue;
+    m.textContent = meta;
+    root.querySelector('.scn-next').textContent = next;
+    root.querySelector('.progress > div').style.width = pct + '%';
+  }
+}
 
-    // fetch all points once to build the alias datalists and the fault-aware points table
-    const allPoints = await fetchJSON('/api/points');
-    pointsByGroup = {};
-    for (const p of allPoints) {
-      (pointsByGroup[p.group] = pointsByGroup[p.group] || []).push(p.alias);
-    }
+function renderPoints(allPoints) {
+  pointsByGroup = {};
+  for (const p of allPoints) {
+    (pointsByGroup[p.group] = pointsByGroup[p.group] || []).push(p.alias);
+  }
 
-    const groupFilter = document.getElementById('device-filter').value;
-    const points = groupFilter ? allPoints.filter(p => p.group === groupFilter) : allPoints;
-    const tbody = document.getElementById('points-body');
+  const groupFilter = $('filter-group').value;
+  const q = $('filter-search').value.trim().toLowerCase();
+  const points = allPoints.filter((p) => {
+    if (groupFilter && p.group !== groupFilter) return false;
+    if (q && !(p.alias + ' ' + p.object_name + ' ' + p.group).toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  const rowSetKey = groupFilter + '|' + q + '|' + points.length;
+  const tbody = $('points-body');
+
+  if (rowSetKey !== lastRowSetKey) {
+    /* rebuild the table */
+    lastRowSetKey = rowSetKey;
+    pointRows.clear();
     tbody.innerHTML = '';
     for (const p of points) {
       const tr = document.createElement('tr');
-      let nameCell = p.object_name;
-      if (p.interlock) nameCell = `<span class="interlock">${nameCell} (INTERLOCK)</span>`;
-      let statusCell = '';
-      if (p.forced) statusCell += '<span class="forced-badge">FORCED</span> ';
-      for (const ft of p.active_faults) {
-        if (!(p.forced && ft === 'stuck_value')) statusCell += `<span class="fault-badge">${ft}</span> `;
+      const nameHtml = p.interlock
+        ? `${esc(p.object_name)} <span class="badge interlock">INTERLOCK</span>`
+        : esc(p.object_name);
+      tr.innerHTML =
+        `<td class="mono">${esc(p.group)}</td><td>${nameHtml}</td>` +
+        `<td class="mono dim">${esc(p.object_type)}:${p.object_instance}</td>` +
+        `<td><span class="dir-tag ${p.direction === 'sim_to_webctrl' ? 'dir-sim' : 'dir-web'}">` +
+        `${p.direction === 'sim_to_webctrl' ? 'SIM → WEBCTRL' : 'WEBCTRL → SIM'}</span></td>` +
+        `<td class="mono"></td><td class="dim">${esc(p.units)}</td><td></td>`;
+      const valEl = tr.children[4];
+      const statusEl = tr.children[6];
+      tbody.appendChild(tr);
+      pointRows.set(p.group + '.' + p.alias, { valEl, statusEl, lastVal: null, lastStatus: null });
+    }
+  }
+
+  for (const p of points) {
+    const row = pointRows.get(p.group + '.' + p.alias);
+    if (!row) continue;
+    const val = fmtValue(p.present_value);
+    if (val !== row.lastVal) {
+      row.valEl.textContent = val;
+      if (row.lastVal !== null) {
+        row.valEl.classList.remove('flash');
+        void row.valEl.offsetWidth;
+        row.valEl.classList.add('flash');
       }
-      tr.innerHTML = `<td>${p.group}</td><td>${nameCell}</td><td>${p.object_type}:${p.object_instance}</td>
-        <td class="${dirClass(p.direction)}">${dirLabel(p.direction)}</td>
-        <td>${Number(p.present_value).toFixed(1)}</td><td>${p.units}</td><td>${statusCell}</td>`;
+      row.lastVal = val;
+    }
+    let status = '';
+    if (p.forced) status += '<span class="badge forced">FORCED</span>';
+    for (const ft of p.active_faults) {
+      if (!(p.forced && ft === 'stuck_value')) status += `<span class="badge fault">${esc(ft)}</span>`;
+    }
+    if (status !== row.lastStatus) { row.statusEl.innerHTML = status; row.lastStatus = status; }
+  }
+
+  /* live OA readout on the overview */
+  const oaT = allPoints.find((p) => p.group === 'ACI-SIM-SITE' && p.alias === 'oa_temp');
+  const oaH = allPoints.find((p) => p.group === 'ACI-SIM-SITE' && p.alias === 'oa_humidity');
+  $('site-oa-temp').textContent = oaT ? fmtValue(oaT.present_value) + ' °F' : '—';
+  $('site-oa-rh').textContent = oaH ? fmtValue(oaH.present_value) + ' %RH' : '—';
+}
+
+let lastFaultsKey = '';
+function renderFaults(faults) {
+  const list = $('faults-list');
+  const key = faults.map((f) => f.fault_id).join('|');
+  if (key === lastFaultsKey) return;
+  lastFaultsKey = key;
+  if (!faults.length) {
+    list.innerHTML = '<div class="panel-note">No active faults.</div>';
+    return;
+  }
+  list.innerHTML = '';
+  for (const f of faults) {
+    const target = f.alias ? f.group_id + '.' + f.alias : '(transport-level)';
+    const div = document.createElement('div');
+    div.className = 'fault-item';
+    div.innerHTML =
+      `<span class="t">${esc(f.fault_type)} on <b>${esc(target)}</b>${f.is_manual_force ? ' (force)' : ''}</span>`;
+    const btn = document.createElement('button');
+    btn.className = 'btn ghost sm';
+    btn.textContent = 'Clear';
+    btn.addEventListener('click', () =>
+      runAction(btn, () => fetchJSON('/api/faults/clear?fault_id=' + encodeURIComponent(f.fault_id), { method: 'POST' }),
+        'Fault cleared'));
+    div.appendChild(btn);
+    list.appendChild(div);
+  }
+}
+
+function renderLog(elId, followId, lines) {
+  const el = $(elId);
+  const text = lines.join('\n');
+  if (el.textContent !== text) {
+    el.textContent = text;
+    if ($(followId).checked) el.scrollTop = el.scrollHeight;
+  }
+}
+
+/* ================= main poll loop ================= */
+async function refresh() {
+  try {
+    const [status, allPoints, faults, appLog, bacnetLog] = await Promise.all([
+      fetchJSON('/api/status'),
+      fetchJSON('/api/points'),
+      fetchJSON('/api/faults'),
+      fetchJSON('/api/logs/app?limit=80'),
+      fetchJSON('/api/logs/bacnet?limit=80'),
+    ]);
+    setLink(true);
+    renderStatus(status);
+    renderPoints(allPoints);
+    renderFaults(faults);
+    renderLog('log-app', 'follow-app', appLog);
+    renderLog('log-bacnet', 'follow-bacnet', bacnetLog);
+
+    if (!faultTypesPopulated) {
+      const types = await fetchJSON('/api/fault-types');
+      const sel = $('fault-type');
+      for (const t of types) {
+        const opt = document.createElement('option');
+        opt.value = t;
+        opt.textContent = t;
+        sel.appendChild(opt);
+      }
+      faultTypesPopulated = true;
+    }
+    if (!scenariosPopulated) {
+      const scenarios = await fetchJSON('/api/scenarios');
+      const listEl = $('scn-list');
+      listEl.innerHTML = '';
+      for (const s of scenarios) {
+        const div = document.createElement('div');
+        div.className = 'scn-card';
+        div.innerHTML =
+          `<h3>${esc(s.title)}</h3><p>${esc(s.description)}</p>` +
+          `<div class="controls-line" style="margin-bottom:0;align-items:center;">` +
+          `<span class="meta">${s.event_count} TIMED EVENT${s.event_count === 1 ? '' : 'S'}</span></div>`;
+        const btn = document.createElement('button');
+        btn.className = 'btn accent sm';
+        btn.textContent = 'Run';
+        btn.addEventListener('click', () =>
+          runAction(btn, () => fetchJSON('/api/scenarios/' + s.scenario_id + '/start', { method: 'POST' }),
+            'Scenario started: ' + s.title));
+        div.querySelector('.controls-line').appendChild(btn);
+        listEl.appendChild(div);
+      }
+      scenariosPopulated = true;
+    }
+  } catch (e) {
+    setLink(false);
+  }
+}
+
+/* ================= audit + LLM status ================= */
+let lastAuditKey = '';
+async function refreshAudit() {
+  try {
+    const entries = await fetchJSON('/api/llm/audit?limit=30');
+    const key = entries.length + ':' + (entries.length ? entries[entries.length - 1].timestamp : 0);
+    if (key === lastAuditKey) return;
+    lastAuditKey = key;
+    const tbody = $('audit-body');
+    tbody.innerHTML = '';
+    for (const e of entries.slice().reverse()) {
+      const tr = document.createElement('tr');
+      const time = new Date(e.timestamp * 1000).toLocaleTimeString('en-US', { hour12: false });
+      const detail = e.error || (e.bundle ? e.bundle.summary : '') ||
+        (e.action_results ? JSON.stringify(e.action_results) : '');
+      tr.innerHTML =
+        `<td class="mono">${time}</td><td class="mono">${esc(e.event_type)}</td>` +
+        `<td class="mono dim">${esc(e.request_id || '')}</td>` +
+        `<td class="dim" style="max-width:420px;overflow:hidden;text-overflow:ellipsis;">${esc(detail)}</td>`;
       tbody.appendChild(tr);
     }
+  } catch (e) { /* audit polling is non-critical */ }
+}
 
-    const faults = await fetchJSON('/api/faults');
-    const faultsListEl = document.getElementById('active-faults-list');
-    faultsListEl.innerHTML = faults.length ? '' : '<div class="row"><span class="label">No active faults</span></div>';
-    for (const f of faults) {
-      const div = document.createElement('div');
-      div.className = 'fault-row';
-      const target = f.alias ? `${f.group_id}.${f.alias}` : '(transport-level)';
-      div.innerHTML = `<span>${f.fault_type} on <strong>${target}</strong>${f.is_manual_force ? ' <em>(force)</em>' : ''}</span>
-        <button onclick="clearFault('${f.fault_id}')" style="background:#4b5563;">Clear</button>`;
-      faultsListEl.appendChild(div);
-    }
-
-    const appLog = await fetchJSON('/api/logs/app?limit=60');
-    document.getElementById('log-app').textContent = appLog.join('\n');
-    const bacnetLog = await fetchJSON('/api/logs/bacnet?limit=60');
-    document.getElementById('log-bacnet').textContent = bacnetLog.join('\n');
+async function refreshLlmStatus() {
+  const pill = $('llm-pill');
+  pill.textContent = 'checking…';
+  pill.className = 'pill warn';
+  $('llm-test-icon').classList.add('spin');
+  try {
+    const s = await fetchJSON('/api/llm/status');
+    pill.textContent = s.connected ? 'CONNECTED' : 'NOT REACHABLE';
+    pill.className = 'pill ' + (s.connected ? 'ok' : 'bad');
+    $('llm-host').textContent = s.host;
+    $('llm-model').textContent = s.configured_model;
+    $('llm-models').textContent = (s.available_models || []).join(', ') || (s.error || 'none found');
   } catch (e) {
-    console.error(e);
+    pill.textContent = 'ERROR';
+    pill.className = 'pill bad';
+  } finally {
+    $('llm-test-icon').classList.remove('spin');
   }
 }
 
-function updateAliasOptions(groupSelectId, datalistId) {
-  const group = document.getElementById(groupSelectId).value;
-  const dl = document.getElementById(datalistId);
-  dl.innerHTML = '';
-  for (const alias of (pointsByGroup[group] || [])) {
-    const opt = document.createElement('option');
-    opt.value = alias;
-    dl.appendChild(opt);
+/* ================= LLM propose / apply ================= */
+let lastProposedBundle = null;
+
+async function proposeLlmAction() {
+  const request = $('llm-prompt').value.trim();
+  if (!request) { toast('Enter a request first', 'warn'); return; }
+  const btn = $('btn-propose');
+  btn.disabled = true;
+  $('propose-icon').innerHTML = '<use href="#i-refresh"/>';
+  $('propose-icon').classList.add('spin');
+  $('propose-status').textContent = 'Consulting the model…';
+  $('llm-preview').hidden = true;
+  try {
+    const data = await fetchJSON('/api/llm/propose', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instructor_request: request }),
+    });
+    $('propose-status').textContent = '';
+    renderLlmPreview(data.bundle, data.valid, data.validation_errors);
+  } catch (e) {
+    $('propose-status').textContent = 'Failed: ' + e.message;
+    toast('Proposal failed: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    $('propose-icon').classList.remove('spin');
+    $('propose-icon').innerHTML = '<use href="#i-send"/>';
   }
 }
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('fault-group').addEventListener('change', () => updateAliasOptions('fault-group', 'fault-alias-options'));
-  document.getElementById('force-group').addEventListener('change', () => updateAliasOptions('force-group', 'force-alias-options'));
+
+function renderLlmPreview(bundle, valid, errors) {
+  lastProposedBundle = bundle;
+  $('llm-preview').hidden = false;
+  const pill = $('llm-valid-pill');
+  pill.textContent = valid ? 'VALID' : 'REJECTED';
+  pill.className = 'pill ' + (valid ? 'ok' : 'bad');
+
+  let html = `<div class="row"><span class="k">Intent</span><span class="v">${esc(bundle.intent)}</span></div>`;
+  html += `<div class="row"><span class="k">Confidence</span><span class="v">${esc(String(bundle.confidence))}</span></div>`;
+  html += `<div class="row"><span class="k">Summary</span><span class="v" style="font-family:var(--sans);text-align:right;">${esc(bundle.summary)}</span></div>`;
+  if (bundle.warnings && bundle.warnings.length) {
+    html += `<div class="row"><span class="k" style="color:var(--amber);">Warnings</span>` +
+      `<span class="v" style="color:var(--amber);">${esc(bundle.warnings.join('; '))}</span></div>`;
+  }
+  if (!valid) {
+    html += `<div class="row"><span class="k" style="color:var(--red);">Rejected</span>` +
+      `<span class="v" style="color:var(--red);">${esc((errors || []).join('; '))}</span></div>`;
+  }
+  html += `<pre class="code">${esc(JSON.stringify(bundle.actions, null, 2))}</pre>`;
+  $('llm-preview-body').innerHTML = html;
+  $('btn-llm-apply').disabled = !valid;
+  $('llm-preview').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function applyLlmAction() {
+  if (!lastProposedBundle) return;
+  const btn = $('btn-llm-apply');
+  btn.disabled = true;
+  try {
+    const data = await fetchJSON('/api/llm/apply', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bundle: lastProposedBundle }),
+    });
+    if (data.applied) {
+      toast('Action bundle applied', 'ok');
+      dismissLlmPreview();
+      $('llm-prompt').value = '';
+      refresh();
+    } else {
+      toast('Apply rejected: ' + (data.error || 'unknown error'), 'err');
+      btn.disabled = false;
+    }
+  } catch (e) {
+    toast('Apply failed: ' + e.message, 'err');
+    btn.disabled = false;
+  }
+  refreshAudit();
+}
+
+function dismissLlmPreview() {
+  lastProposedBundle = null;
+  $('llm-preview').hidden = true;
+}
+
+/* ================= wiring ================= */
+$('btn-stopall').addEventListener('click', () =>
+  confirmAction('Stop All Simulation',
+    'This stops the engine and clears every active fault, forced value, and running scenario. WebCTRL will see values freeze at their last state.',
+    () => runAction(null, () => fetchJSON('/api/simulation/stop-all', { method: 'POST' }),
+      'All simulation stopped — faults, forces and scenarios cleared')));
+
+$('engine-toggle').addEventListener('change', (e) => {
+  const on = e.target.checked;
+  $('engine-switch').classList.toggle('on', on);
+  runAction(null, () => fetchJSON('/api/simulation/' + (on ? 'start' : 'stop'), { method: 'POST' }),
+    on ? 'Simulation engine started' : 'Simulation engine stopped');
 });
 
-async function startSim() { await fetchJSON('/api/simulation/start', {method: 'POST'}); refresh(); }
-async function stopSim() { await fetchJSON('/api/simulation/stop', {method: 'POST'}); refresh(); }
-async function stopAllSimulation() {
-  if (!confirm('Stop simulation and clear every active fault, force, and running scenario?')) return;
-  await fetchJSON('/api/simulation/stop-all', {method: 'POST'});
-  refresh();
-}
-async function setWeather() {
-  const t = document.getElementById('oa-temp-input').value;
-  const h = document.getElementById('oa-humidity-input').value;
-  await fetchJSON(`/api/site/weather?oa_temp_f=${t}&oa_humidity_pct=${h}`, {method: 'POST'});
-  refresh();
-}
+$('btn-weather').addEventListener('click', () => {
+  const t = $('oa-temp-input').value;
+  const h = $('oa-humidity-input').value;
+  if (t === '' || h === '') { toast('Enter both target values', 'warn'); return; }
+  runAction($('btn-weather'),
+    () => fetchJSON(`/api/site/weather?oa_temp_f=${encodeURIComponent(t)}&oa_humidity_pct=${encodeURIComponent(h)}`, { method: 'POST' }),
+    `Site targets set: ${t} °F / ${h} %RH`);
+});
 
-async function applyFault() {
-  const group_id = document.getElementById('fault-group').value || null;
-  const alias = document.getElementById('fault-alias').value || null;
-  const fault_type = document.getElementById('fault-type').value;
-  const valueStr = document.getElementById('fault-value').value;
-  const rateStr = document.getElementById('fault-rate').value;
+$('btn-fault-apply').addEventListener('click', () => {
+  const group_id = $('fault-group').value || null;
+  const alias = $('fault-alias').value.trim() || null;
+  const fault_type = $('fault-type').value;
   const parameters = {};
-  if (valueStr !== '') parameters.value = Number(valueStr);
-  if (rateStr !== '') parameters.rate_per_second = Number(rateStr);
-  await fetchJSON('/api/faults/set', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ fault_type, group_id, alias, parameters }),
-  });
-  refresh();
-}
-async function clearFault(fault_id) {
-  await fetchJSON(`/api/faults/clear?fault_id=${encodeURIComponent(fault_id)}`, {method: 'POST'});
-  refresh();
-}
-async function clearAllFaults() {
-  await fetchJSON('/api/faults/clear-all', {method: 'POST'});
-  refresh();
-}
+  if ($('fault-value').value !== '') parameters.value = Number($('fault-value').value);
+  if ($('fault-rate').value !== '') parameters.rate_per_second = Number($('fault-rate').value);
+  runAction($('btn-fault-apply'),
+    () => fetchJSON('/api/faults/set', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fault_type, group_id, alias, parameters }),
+    }),
+    'Fault activated: ' + fault_type);
+});
+
+$('btn-clear-all').addEventListener('click', () =>
+  confirmAction('Clear All Faults', 'Every active fault and forced value will be removed. Equipment returns to normal behavior.',
+    () => runAction(null, () => fetchJSON('/api/faults/clear-all', { method: 'POST' }), 'All faults cleared')));
 
 function parseForceValue(raw) {
   if (raw === 'true') return true;
@@ -461,137 +1579,66 @@ function parseForceValue(raw) {
   const n = Number(raw);
   return isNaN(n) ? raw : n;
 }
-async function forceValue() {
-  const group_id = document.getElementById('force-group').value;
-  const alias = document.getElementById('force-alias').value;
-  const value = parseForceValue(document.getElementById('force-value').value);
-  await fetchJSON('/api/force', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ group_id, alias, value }),
-  });
-  refresh();
-}
-async function releaseValue() {
-  const group_id = document.getElementById('force-group').value;
-  const alias = document.getElementById('force-alias').value;
-  await fetchJSON('/api/release', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ group_id, alias }),
-  });
-  refresh();
-}
 
-async function startScenario(id) { await fetchJSON(`/api/scenarios/${id}/start`, {method: 'POST'}); refresh(); }
-async function stopScenario() { await fetchJSON('/api/scenarios/stop', {method: 'POST'}); refresh(); }
-async function resetScenario() { await fetchJSON('/api/scenarios/reset', {method: 'POST'}); refresh(); }
+$('btn-force').addEventListener('click', () => {
+  const group_id = $('force-group').value;
+  const alias = $('force-alias').value.trim();
+  if (!group_id || !alias) { toast('Pick a group and point alias', 'warn'); return; }
+  const value = parseForceValue($('force-value').value.trim());
+  runAction($('btn-force'),
+    () => fetchJSON('/api/force', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group_id, alias, value }),
+    }),
+    `Forced ${group_id}.${alias} = ${value}`);
+});
 
-// ---- Phase 6a: LLM Console ------------------------------------------------
-let lastProposedBundle = null;
+$('btn-release').addEventListener('click', () => {
+  const group_id = $('force-group').value;
+  const alias = $('force-alias').value.trim();
+  if (!group_id || !alias) { toast('Pick a group and point alias', 'warn'); return; }
+  runAction($('btn-release'),
+    () => fetchJSON('/api/release', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ group_id, alias }),
+    }),
+    `Released ${group_id}.${alias}`);
+});
 
-async function refreshLlmStatus() {
-  document.getElementById('llm-status-pill').textContent = 'checking...';
-  try {
-    const s = await fetchJSON('/api/llm/status');
-    document.getElementById('llm-status-pill').textContent = s.connected ? 'connected' : 'not reachable';
-    document.getElementById('llm-status-pill').className = 'pill ' + (s.connected ? 'running' : 'stopped');
-    document.getElementById('llm-host').textContent = s.host;
-    document.getElementById('llm-model').textContent = s.configured_model;
-    document.getElementById('llm-available-models').textContent = (s.available_models || []).join(', ') || (s.error || 'none found');
-  } catch (e) {
-    document.getElementById('llm-status-pill').textContent = 'error';
-    document.getElementById('llm-status-pill').className = 'pill stopped';
+$('btn-scn-stop').addEventListener('click', () =>
+  runAction($('btn-scn-stop'), () => fetchJSON('/api/scenarios/stop', { method: 'POST' }), 'Scenario stopped'));
+
+$('btn-scn-reset').addEventListener('click', () =>
+  confirmAction('Reset Scenario Engine', 'Stops any running scenario and clears every fault and force it created.',
+    () => runAction(null, () => fetchJSON('/api/scenarios/reset', { method: 'POST' }), 'Scenario engine reset')));
+
+$('btn-llm-test').addEventListener('click', refreshLlmStatus);
+$('btn-propose').addEventListener('click', proposeLlmAction);
+$('btn-llm-apply').addEventListener('click', applyLlmAction);
+$('btn-llm-dismiss').addEventListener('click', dismissLlmPreview);
+
+$('filter-group').addEventListener('change', () => { lastRowSetKey = ''; refresh(); });
+$('filter-search').addEventListener('input', () => { lastRowSetKey = ''; refresh(); });
+
+function updateAliasOptions(groupSelectId, datalistId) {
+  const group = $(groupSelectId).value;
+  const dl = $(datalistId);
+  dl.innerHTML = '';
+  for (const alias of (pointsByGroup[group] || [])) {
+    const opt = document.createElement('option');
+    opt.value = alias;
+    dl.appendChild(opt);
   }
 }
+$('fault-group').addEventListener('change', () => updateAliasOptions('fault-group', 'fault-alias-options'));
+$('force-group').addEventListener('change', () => updateAliasOptions('force-group', 'force-alias-options'));
 
-async function refreshLlmAudit() {
-  try {
-    const entries = await fetchJSON('/api/llm/audit?limit=30');
-    const tbody = document.getElementById('llm-audit-body');
-    tbody.innerHTML = '';
-    for (const e of entries.slice().reverse()) {
-      const tr = document.createElement('tr');
-      const time = new Date(e.timestamp * 1000).toLocaleTimeString();
-      const detail = e.error || (e.bundle ? e.bundle.summary : '') || (e.action_results ? JSON.stringify(e.action_results) : '');
-      tr.innerHTML = `<td>${time}</td><td>${e.event_type}</td><td>${e.request_id || ''}</td><td style="max-width:400px;overflow:hidden;text-overflow:ellipsis;">${detail}</td>`;
-      tbody.appendChild(tr);
-    }
-  } catch (e) { /* LLM Console not critical to the main dashboard poll loop */ }
-}
-
-async function proposeLlmAction() {
-  const promptEl = document.getElementById('llm-prompt');
-  const statusEl = document.getElementById('llm-propose-status');
-  const request = promptEl.value.trim();
-  if (!request) return;
-  statusEl.textContent = 'Thinking...';
-  document.getElementById('llm-preview-card').style.display = 'none';
-
-  try {
-    const resp = await fetch('/api/llm/propose', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ instructor_request: request }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) {
-      statusEl.textContent = 'Failed: ' + (data.error || 'unknown error');
-      return;
-    }
-    statusEl.textContent = '';
-    renderLlmPreview(data.bundle, data.valid, data.validation_errors);
-  } catch (e) {
-    statusEl.textContent = 'Request failed: ' + e;
-  }
-}
-
-function renderLlmPreview(bundle, valid, errors) {
-  lastProposedBundle = bundle;
-  document.getElementById('llm-preview-card').style.display = 'block';
-  const pill = document.getElementById('llm-valid-pill');
-  pill.textContent = valid ? 'valid' : 'rejected';
-  pill.className = 'pill ' + (valid ? 'running' : 'stopped');
-
-  let html = `<p style="margin:4px 0;"><strong>Intent:</strong> ${bundle.intent} &middot; <strong>Confidence:</strong> ${bundle.confidence}</p>`;
-  html += `<p style="margin:4px 0;">${bundle.summary}</p>`;
-  if (bundle.warnings && bundle.warnings.length) {
-    html += `<p style="color:#fbbf24;margin:4px 0;">Warnings: ${bundle.warnings.join('; ')}</p>`;
-  }
-  if (!valid) {
-    html += `<p style="color:#f87171;margin:4px 0;">Rejected: ${(errors || []).join('; ')}</p>`;
-  }
-  html += '<pre style="background:#0e1116;padding:10px;border-radius:6px;font-size:11.5px;overflow-x:auto;">' +
-    JSON.stringify(bundle.actions, null, 2) + '</pre>';
-  document.getElementById('llm-preview-body').innerHTML = html;
-  document.getElementById('llm-approve-btn').disabled = !valid;
-}
-
-async function applyLlmAction() {
-  if (!lastProposedBundle) return;
-  const resp = await fetch('/api/llm/apply', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ bundle: lastProposedBundle }),
-  });
-  const data = await resp.json();
-  if (data.applied) {
-    dismissLlmPreview();
-    document.getElementById('llm-prompt').value = '';
-    refresh();
-  } else {
-    alert('Apply failed: ' + (data.error || 'unknown error'));
-  }
-  refreshLlmAudit();
-}
-
-function dismissLlmPreview() {
-  lastProposedBundle = null;
-  document.getElementById('llm-preview-card').style.display = 'none';
-}
-
-refreshLlmStatus();
-refreshLlmAudit();
-setInterval(refreshLlmAudit, 5000);
-
+/* ================= boot ================= */
 refresh();
 setInterval(refresh, 2500);
+refreshLlmStatus();
+refreshAudit();
+setInterval(refreshAudit, 5000);
 </script>
 </body>
 </html>
