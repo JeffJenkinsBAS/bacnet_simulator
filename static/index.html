@@ -124,13 +124,10 @@
     margin-bottom: 10px;
   }
   .brand-mark {
-    width: 38px; height: 38px; flex-shrink: 0;
-    display: grid; place-items: center;
-    border-radius: 12px;
-    background: linear-gradient(145deg, rgba(255, 200, 90, 0.95), rgba(217, 119, 6, 0.95));
-    color: #241503;
-    font-weight: 800; font-size: 13px; letter-spacing: 0.02em;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), var(--glow-amber);
+    width: 42px; height: 42px; flex-shrink: 0;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 0 1px var(--glass-border);
   }
   .brand-name { font-weight: 700; font-size: 13px; letter-spacing: 0.14em; }
   .brand-sub { font-size: 9.5px; color: var(--text-3); letter-spacing: 0.1em; margin-top: 2px; }
@@ -235,13 +232,6 @@
   .btn-stopall:hover { filter: brightness(1.1); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), var(--glow-red); }
   .btn-stopall:active { transform: scale(0.95); }
   .btn-stopall svg { width: 16px; height: 16px; }
-
-  .co-logo {
-    width: 46px; height: 46px; flex-shrink: 0;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 0 1px var(--glass-border);
-  }
 
   /* ================= CONTENT / VIEWS ================= */
   .content { padding: 18px; max-width: 1560px; width: 100%; margin: 0 auto; }
@@ -767,7 +757,7 @@
   <!-- ============ LEFT RAIL ============ -->
   <aside class="rail" aria-label="Primary navigation">
     <div class="brand">
-      <div class="brand-mark">ACI</div>
+      <img class="brand-mark" src="/static/logo.png" alt="Automated Controls Inc" title="Automated Controls Inc">
       <div>
         <div class="brand-name">COMMAND</div>
         <div class="brand-sub">BACNET SIM STATION</div>
@@ -811,7 +801,6 @@
       <button class="btn-stopall" id="btn-stopall" aria-label="Stop all simulation, clear every fault, force and scenario">
         <svg><use href="#i-stop"/></svg>STOP ALL
       </button>
-      <img class="co-logo" src="/static/logo.png" alt="Automated Controls Inc" title="Automated Controls Inc">
     </header>
 
     <main class="content">
