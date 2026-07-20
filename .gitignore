@@ -16,3 +16,6 @@ vendor_packages/
 
 # NSSM binary (downloaded manually per PACKAGING.md, not distributed)
 tools/nssm/nssm.exe
+
+# Claude Code session artifacts (worktrees, local settings)
+.claude/
