@@ -109,7 +109,7 @@ class PointRegistry:
             return AnalogInputObject(
                 presentValue=point.initial_value,
                 units=_units(point.units),
-                covIncrement=point.cov_increment or 0.1,
+                covIncrement=point.cov_increment if point.cov_increment is not None else 0.1,
                 **common_kwargs,
             )
 
@@ -117,8 +117,8 @@ class PointRegistry:
             return AnalogOutputObject(
                 presentValue=point.initial_value,
                 units=_units(point.units),
-                covIncrement=point.cov_increment or 0.1,
-                relinquishDefault=point.relinquish_default or 0.0,
+                covIncrement=point.cov_increment if point.cov_increment is not None else 0.1,
+                relinquishDefault=point.relinquish_default if point.relinquish_default is not None else 0.0,
                 **common_kwargs,
             )
 
@@ -127,14 +127,14 @@ class PointRegistry:
                 return AnalogValueObjectCmd(
                     presentValue=point.initial_value,
                     units=_units(point.units),
-                    covIncrement=point.cov_increment or 0.1,
-                    relinquishDefault=point.relinquish_default or 0.0,
+                    covIncrement=point.cov_increment if point.cov_increment is not None else 0.1,
+                    relinquishDefault=point.relinquish_default if point.relinquish_default is not None else 0.0,
                     **common_kwargs,
                 )
             return AnalogValueObject(
                 presentValue=point.initial_value,
                 units=_units(point.units),
-                covIncrement=point.cov_increment or 0.1,
+                covIncrement=point.cov_increment if point.cov_increment is not None else 0.1,
                 **common_kwargs,
             )
 
@@ -218,7 +218,7 @@ class PointRegistry:
         return float(pv)
 
     def all_points(self) -> dict[str, RegisteredPoint]:
-        """Every point across every group, keyed by 'group_id.alias'."""
+        """Every point across all groups, keyed by 'group_id.alias'."""
         return dict(self._points)
 
     def points_for_group(self, group_id: str) -> dict[str, RegisteredPoint]:
