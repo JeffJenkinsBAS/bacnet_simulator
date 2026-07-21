@@ -22,6 +22,7 @@ fails loudly at startup instead of causing a confusing runtime error later.
 from __future__ import annotations
 
 from enum import Enum
+from ipaddress import IPv4Address
 from typing import Optional
 
 from pydantic import BaseModel, Field, model_validator
@@ -103,9 +104,6 @@ class PointConfig(BaseModel):
             ObjectType.binary_output,
             ObjectType.multi_state_output,
         ):
-            # AV/BV/MSV that are writable must be explicitly marked commandable
-            # so the transport layer knows to build the *Cmd variant with a
-            # priority array, rather than silently guessing.
             raise ValueError(
                 f"point '{self.alias}': writable AV/BV/MSV points must set "
                 f"commandable=true explicitly"
@@ -114,13 +112,7 @@ class PointConfig(BaseModel):
 
 
 class EquipmentGroupConfig(BaseModel):
-    """
-    One logical piece of equipment's full point list (e.g. ACI-SIM-AHU-1).
-    Not a separate BACnet device anymore -- just an organizational unit that
-    contributes objects to the single supervisory device, offset by
-    `instance_offset` so its local point numbers never collide with any
-    other group's.
-    """
+    """One logical piece of equipment's full point list."""
 
     group_id: str
     description: str = ""
@@ -128,10 +120,7 @@ class EquipmentGroupConfig(BaseModel):
         ...,
         description=(
             "Added to every point's object_instance in this group to produce the real, "
-            "global object instance on the single supervisory device. Convention used "
-            "throughout this project: (original per-group ordinal) * 1000, e.g. AHU-1 = "
-            "9000 so its AI:1 becomes global AI:9001. Explicit in every group's config "
-            "file, never computed silently at runtime."
+            "global object instance on the single supervisory device."
         ),
     )
     points: list[PointConfig]
@@ -156,17 +145,7 @@ class EquipmentGroupConfig(BaseModel):
 
 
 def validate_equipment_groups(groups: list["EquipmentGroupConfig"]) -> None:
-    """
-    Cross-group validation: once instance_offset is applied, the resulting
-    global (object_type, instance) pairs must be unique across the ENTIRE
-    fleet of equipment groups, since they all now live under one BACnet
-    device. Object NAMES must also be globally unique -- BACnet requires
-    this within a device independently of object identifiers, and generic
-    per-group names (e.g. "Boiler OK") collide as soon as multiple similar
-    units share one device. Called once at startup after every group config
-    is loaded, so a naming collision fails loudly here instead of surfacing
-    as a raw RuntimeError from bacpypes3 partway through building objects.
-    """
+    """Validate global object identifiers and object names."""
     seen_global: dict[tuple[str, int], str] = {}
     seen_names: dict[str, str] = {}
     seen_group_ids: set[str] = set()
@@ -189,8 +168,7 @@ def validate_equipment_groups(groups: list["EquipmentGroupConfig"]) -> None:
                 raise ValueError(
                     f"duplicate object name '{p.object_name}' (group '{g.group_id}' point "
                     f"'{p.alias}' collides with '{seen_names[p.object_name]}') -- BACnet "
-                    f"requires unique object names within a device, not just unique "
-                    f"identifiers; give this point a more specific name"
+                    f"requires unique object names within a device"
                 )
             seen_names[p.object_name] = f"{g.group_id}.{p.alias}"
 
@@ -198,48 +176,42 @@ def validate_equipment_groups(groups: list["EquipmentGroupConfig"]) -> None:
 class SupervisoryDeviceConfig(BaseModel):
     """The single BACnet device every equipment group's objects live under."""
 
-    device_instance: int
+    device_instance: int = Field(..., ge=0, le=4194302)
     device_name: str
     description: str = ""
 
 
 class NetworkConfig(BaseModel):
-    """
-    Network Safety settings (Phase 1 requirements). Everything here is
-    deliberately explicit -- no implicit defaults that could bind to the
-    wrong adapter or answer Who-Is on a network the instructor didn't intend.
-    """
+    """Validated BACnet/IP network and safety settings."""
 
-    bind_address: str = Field(
-        default="127.0.0.1",
-        description="IP address of the NIC to bind. Must be a specific interface address, "
-        "not 0.0.0.0 -- testing found that binding to 0.0.0.0 causes reply packets to fail "
-        "to reach the requester with this BACnet stack (replies appear to go out with the "
-        "wrong source address). Set this to the actual bench NIC's IP (e.g. 192.168.68.50) "
-        "before connecting to the real network; 127.0.0.1 is only for local development.",
-    )
-    subnet_bits: int = Field(default=24, description="Subnet mask size for the bind address, e.g. 24 for /24")
-    udp_port: int = Field(
-        default=47809,
-        description="BACnet/IP port for the whole supervisory device (no per-equipment ports). "
-        "Bench standard is 47809 -- NOT the default 47808 -- so simulator/bench-WebCTRL traffic "
-        "can never reach the office building-control WebCTRL, which lives on 47808 "
-        "(192.168.45.34). The bench WebCTRL's BACnet connection must be set to 47809 to match.",
-    )
+    bind_address: str = Field(default="127.0.0.1")
+    subnet_bits: int = Field(default=24)
+    udp_port: int = Field(default=47809)
     vendor_identifier: int = 999
-    network_number: int = 0
+    network_number: int = Field(default=0, ge=0, le=65534)
+    ip_default_gateway: str = Field(default="0.0.0.0")
+    ip_dns_servers: list[str] = Field(default_factory=list)
     private_lab_mode: bool = True
     respond_to_who_is: bool = True
-    write_source_allowlist: list[str] = Field(
-        default_factory=list,
-        description="If non-empty, only WriteProperty requests from these source IPs are accepted.",
-    )
-    peer_allowlist: list[str] = Field(
-        default_factory=list,
-        description="Single-point-connection enforcement: when non-empty, EVERY BACnet request "
-        "(reads, writes, discovery, COV subscribe) from a source IP not in this list is silently "
-        "dropped and counted in messages_blocked. On the bench, set this to the laptop's own "
-        "static IP so only the co-resident bench WebCTRL can talk to the simulator; leave empty "
-        "to accept all sources (dev only).",
-    )
+    write_source_allowlist: list[str] = Field(default_factory=list)
+    peer_allowlist: list[str] = Field(default_factory=list)
     startup_duplicate_instance_check: bool = True
+
+    @model_validator(mode="after")
+    def _validate_network_values(self) -> "NetworkConfig":
+        if self.bind_address == "0.0.0.0":
+            raise ValueError("bind_address must identify a specific interface, not 0.0.0.0")
+        try:
+            IPv4Address(self.bind_address)
+            IPv4Address(self.ip_default_gateway)
+            for address in self.ip_dns_servers:
+                IPv4Address(address)
+        except ValueError as exc:
+            raise ValueError(f"invalid IPv4 network configuration: {exc}") from exc
+        if not 0 <= self.subnet_bits <= 32:
+            raise ValueError("subnet_bits must be between 0 and 32")
+        if not 1 <= self.udp_port <= 65535:
+            raise ValueError("udp_port must be between 1 and 65535")
+        if not 0 <= self.vendor_identifier <= 65535:
+            raise ValueError("vendor_identifier must be between 0 and 65535")
+        return self
