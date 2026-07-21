@@ -1625,7 +1625,9 @@ function renderLlmPreview(bundle, valid, errors) {
   }
   html += `<pre class="code">${esc(JSON.stringify(bundle.actions, null, 2))}</pre>`;
   $('llm-preview-body').innerHTML = html;
-  $('btn-llm-apply').disabled = !valid;
+  // Read-only bundles (explain/summarize) validate with no actions; there is
+  // nothing to apply, so keep Approve & Apply disabled for them.
+  $('btn-llm-apply').disabled = !valid || !(bundle.actions && bundle.actions.length);
   $('llm-preview').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
