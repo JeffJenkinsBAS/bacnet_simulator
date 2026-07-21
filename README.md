@@ -23,13 +23,12 @@ for the audit and [`HANDOFF.md`](HANDOFF.md) §0 for the session log.
 ## What this actually does
 
 - Exposes **143 BACnet objects** under **one supervisory device**
-  (`ACI-SIM-SUPERVISOR`, instance `242000`) on **UDP `47809`** —
-  deliberately NOT the standard 47808, so bench traffic can never reach
-  the office building-control WebCTRL that lives there. A transport-level
-  `peer_allowlist` additionally drops every BACnet request from any
-  non-allowlisted source without a reply (single-point connection to the
-  bench WebCTRL only), with a live blocked-request counter on the
-  dashboard.
+  (`ACI-SIM-SUPERVISOR`, instance `242000`) on the bench simulator host
+  `192.168.168.201`, listening on **UDP `47808`**. A transport-level
+  `peer_allowlist` drops every BACnet request from any non-allowlisted
+  source without a reply — on the verified bench this is set to the bench
+  WebCTRL host `192.168.168.200` (single-point connection), with a live
+  blocked-request counter on the dashboard.
 - Supports **all three WebCTRL refresh strategies on every point** —
   polling (refresh timer < 31 s), UnconfirmedCOV (>= 31 s), and
   ConfirmedCOV (>= 1 min ending :01) — with notification delivery for
@@ -79,12 +78,12 @@ Dashboard at **http://127.0.0.1:8000**. On Windows, use
 [`PACKAGING.md`](PACKAGING.md) for the full install/firewall/service
 walkthrough, including running this as an auto-starting Windows Service.
 
-**Before connecting to a real bench network:** edit `config/network.json`
-— `bind_address` must be the machine's real NIC IP (never `127.0.0.1` or
-`0.0.0.0`), `udp_port` stays `47809` (the bench WebCTRL's BACnet
-connection must match; the office system owns 47808), and
-`peer_allowlist` should hold the laptop's own IP so only the co-resident
-bench WebCTRL can talk to the simulator.
+**Before connecting to the bench network:** edit `config/network.json` to
+the verified bench topology — `bind_address` is the simulator host's NIC
+IP `192.168.168.201` (never `127.0.0.1` or `0.0.0.0`), `udp_port` is
+`47808`, and both `peer_allowlist` and `write_source_allowlist` hold the
+bench WebCTRL host IP `192.168.168.200` so only WebCTRL (on its BACnet
+connection at `192.168.168.200:47809`) can talk to the simulator.
 
 ## The dashboard
 
@@ -130,7 +129,7 @@ app/
   llm/, services/                                                  Ollama client, action validation, orchestration (Phase 6a)
   api.py, main.py                                                    FastAPI endpoints (incl. /api/cov/subscriptions), entry point
 config/
-  network.json, supervisory_device.json                              Bind address, port 47809, peer allowlist, device identity
+  network.json, supervisory_device.json                              Bind address, port 47808, peer allowlist, device identity
   devices/*.json, scenarios/*.json, llm/*.json                          Equipment groups, training scenarios, LLM settings
 static/index.html, static/logo.png     The dashboard (single file, no build step) + company logo
 scripts/
@@ -172,8 +171,7 @@ but deaf ([`SIMULATION_AUDIT.md`](SIMULATION_AUDIT.md) status notes).
 
 Honestly scoped, not hidden — full list in `HANDOFF.md` §6, briefly:
 
-- The supervisory device instance (`242000`) is a proposed default, not
-  yet formally confirmed as final.
+- The supervisory device instance (`242000`) is the verified bench value.
 - No occupancy modeling, no auto-graded scenario completion criteria.
 - The startup duplicate-instance check is skipped on loopback binds (a
   Windows loopback-broadcast quirk kills the UDP transport); its behavior

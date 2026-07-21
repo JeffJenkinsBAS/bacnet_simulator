@@ -186,7 +186,7 @@ class NetworkConfig(BaseModel):
 
     bind_address: str = Field(default="127.0.0.1")
     subnet_bits: int = Field(default=24)
-    udp_port: int = Field(default=47809)
+    udp_port: int = Field(default=47808)
     vendor_identifier: int = 999
     network_number: int = Field(default=0, ge=0, le=65534)
     ip_default_gateway: str = Field(default="0.0.0.0")

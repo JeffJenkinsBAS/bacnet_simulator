@@ -51,16 +51,28 @@ Highlights, roughly in order:
   subscriptions per mode for training. Transport faults and the traffic
   counter now also intercept ReadPropertyMultiple / WritePropertyMultiple
   / SubscribeCOV — what WebCTRL actually sends.
-- **Network isolation from the office building-control system.** The
-  office WebCTRL (192.168.45.34, UDP 47808, runs the real office HVAC +
-  lighting, reachable over Wi-Fi) must never see bench traffic. The bench
-  standard is now **UDP 47809** (simulator config changed; Jeff sets the
-  bench WebCTRL's BACnet connection to 47809 himself), plus a new
-  `peer_allowlist` in `config/network.json`: when set, every BACnet
-  request from a non-allowlisted source IP is silently dropped (no reply)
-  and counted in a `messages_blocked` counter shown on the dashboard. On
-  the bench, set it to the laptop's own static IP. **Never move the
-  simulator back to 47808.**
+- **Network isolation and verified bench topology (authoritative).** The
+  bench is an isolated `192.168.168.0/24` segment with exactly two hosts:
+  - **Simulator** (this app): `192.168.168.201`, listening on **UDP
+    47808**.
+  - **WebCTRL**: `192.168.168.200`, BACnet connection on **UDP 47809**,
+    targeting the simulator at `192.168.168.201:47808`.
+  - **Device instance**: `242000`.
+
+  A `peer_allowlist` in `config/network.json` silently drops (no reply)
+  every BACnet request from a source IP not in it, counting it in a
+  `messages_blocked` counter on the dashboard; `write_source_allowlist`
+  does the same for writes. Both are set to the WebCTRL host
+  `192.168.168.200` so only WebCTRL can reach the simulator.
+
+  > **Supersedes the 2026-07-17 "bench standard is UDP 47809 / never move
+  > back to 47808" note below.** That earlier decision assumed a
+  > co-resident WebCTRL sharing the simulator's NIC and an office WebCTRL
+  > squatting on 47808. The verified bench instead separates the two hosts
+  > (`.200` WebCTRL / `.201` simulator) on an isolated subnet: the
+  > simulator now binds **47808** and WebCTRL uses **47809**. Any remaining
+  > references to a simulator on 47809, a `192.168.168.100` bench IP, or a
+  > `192.168.68.0/24` subnet are stale.
 - **The dashboard was rebuilt twice** (war-room pass, then Apple
   liquid-glass design per Jeff's preference): glass rail/command bar,
   capsule controls, engine power toggle, ×1–×60 time-rate control, live
@@ -68,11 +80,12 @@ Highlights, roughly in order:
   panel, peer-allowlist/blocked-requests readouts, and the ACI round logo
   (static/logo.png) as the top-left brand mark. Still one self-contained
   HTML file, offline-safe.
-- **IT/network coordination**: the simulator needs NO MAC/IP of its own —
-  it shares the laptop's NIC. One static IP reservation for the laptop is
-  all IT needs (machine `JEFF-JENKINS`; wired Killer E3100G MAC
-  `D8-BB-C1-F7-89-38`, USB Realtek `E0-EF-25-01-BD-C1`). The wired port
-  already carries a manual 192.168.168.100 — likely the bench subnet.
+- **IT/network coordination**: the simulator binds the bench NIC directly
+  at the verified static IP `192.168.168.201/24` (machine `JEFF-JENKINS`;
+  wired Killer E3100G MAC `D8-BB-C1-F7-89-38`, USB Realtek
+  `E0-EF-25-01-BD-C1`). The bench WebCTRL host is `192.168.168.200` on the
+  same isolated `/24`. (An earlier manual `192.168.168.100` on the wired
+  port is superseded by `192.168.168.201`.)
 
 ---
 
@@ -106,17 +119,18 @@ across OS processes on this Windows machine, including both COV modes.
 - ✅ Found and disabled a conflicting service (a previously-purchased SCADA
   Systems BACnet Simulator was squatting on UDP 47808).
 - ✅ venv installed via the FIXED `install.bat`; suite green on this machine.
-- ⚠️ **Port decision SUPERSEDED (2026-07-17): the bench now runs on UDP
-  `47809`, not 47808** — the office building-control WebCTRL
-  (192.168.45.34) owns 47808 and must never see bench traffic. Jeff
-  changes the bench WebCTRL's BACnet connection to 47809 himself. The
-  simulator additionally enforces a `peer_allowlist` (see §0).
-- ⬜ **Still not confirmed complete**: `bind_address` set to the laptop's
-  real NIC IP, `peer_allowlist` set to that same IP, the Windows Firewall
-  rule (UDP 47809), NSSM service installation, the post-reboot auto-start
-  check, bench WebCTRL moved to 47809 + Discovery, and the first real
-  read/write smoke test (AHU-1 command → VAV-1 response visible in
-  WebCTRL). The full sequence is in `NEXT_STEPS_INTEGRATION_TESTING.md`.
+- ✅ **Verified bench topology (see §0)**: simulator `192.168.168.201`
+  on **UDP 47808**, WebCTRL `192.168.168.200` on UDP 47809, device
+  instance `242000`, `peer_allowlist` and `write_source_allowlist` both
+  `["192.168.168.200"]`. `config/network.json` now reflects this. (This
+  supersedes the earlier 2026-07-17 "simulator on 47809" decision.)
+- ⬜ **Still not confirmed complete on the physical bench**: NIC set to
+  `192.168.168.201/24`, the Windows Firewall rule (UDP 47808, scoped to
+  `192.168.168.200` — see `scripts\windows\add_firewall_47808.bat`), NSSM
+  service installation, the post-reboot auto-start check, WebCTRL
+  Discovery against `192.168.168.201:47808`, and the first real read/write
+  smoke test (AHU-1 command → VAV-1 response visible in WebCTRL). The full
+  sequence is in `NEXT_STEPS_INTEGRATION_TESTING.md`.
 
 **Phase 6 direction has been reviewed and phased** (see §7) — a large
 LLM/Ollama orchestration + dashboard upgrade spec was submitted and
@@ -131,9 +145,8 @@ instruction to plan before making major changes. Full review in
 - **One BACnet device** (`ACI-SIM-SUPERVISOR`) hosts everything — not one
   device per equipment group. This was a direct field correction from Jeff
   after an earlier draft used 16 separate devices/ports.
-- **Proposed device instance: 242000.** A proposed default, matching the
-  `2420xx` block Jeff designated — **still not explicitly confirmed as
-  final.**
+- **Verified device instance: 242000.** Confirmed for the bench, matching
+  the `2420xx` block Jeff designated.
 - **16 equipment groups, 143 BACnet objects.** Each group has an
   `instance_offset` (position × 1000 — e.g. AHU-1 is offset 9000); a
   point's real global object instance is `offset + local_instance`. Full
@@ -182,7 +195,7 @@ app/
   api.py                          FastAPI REST endpoints (+ /api/llm/* in Phase 6a)
   main.py                          Entry point — loads config, wires everything, starts uvicorn
 config/
-  network.json                     bind_address / udp_port — udp_port confirmed 47808 (shared with WebCTRL, no conflict); bind_address still needs to be the laptop's real NIC IP
+  network.json                     verified: bind_address 192.168.168.201, udp_port 47808, peer_allowlist + write_source_allowlist = [192.168.168.200]
   supervisory_device.json            The one device's instance/name/description
   devices/*.json                       16 equipment group configs (generated — see script below)
   scenarios/*.json                       6 shipped training scenarios
@@ -248,7 +261,7 @@ README.md                            Phase-by-phase technical narrative
 
 | Item | Status |
 |---|---|
-| Supervisory device instance 242000 | Proposed default, **not confirmed** by Jeff |
+| Supervisory device instance 242000 | **Verified** for the bench |
 | ~~COV notification delivery~~ | **RESOLVED 2026-07-17** — both modes verified live + tested; see §0/§5 |
 | Duplicate BACnet instance / incorrect network number / incorrect units faults | Not implemented — flagged in `faults.py`'s docstring |
 | Occupancy modeling | Not implemented |
@@ -256,7 +269,7 @@ README.md                            Phase-by-phase technical narrative
 | "Status Indicator" relay (Simulation Manager) | Assumed out of scope, same category as confirmed-out-of-scope "Safety Trip" — **not explicitly confirmed** the same way |
 | NSSM binary | Not shipped, must be downloaded manually (`tools/nssm/PUT_NSSM_EXE_HERE.txt`) |
 | ~~Windows batch/service scripts~~ | **FIXED 2026-07-17** — path bug corrected in all seven; `install.bat` executed end-to-end on this machine; service/scheduled-task install still unexercised |
-| Full bench deployment (bind_address + peer_allowlist → Firewall 47809 → service → reboot → bench WebCTRL to 47809 → Discovery → smoke test) | **Not confirmed complete** — see §2 |
+| Full bench deployment (bind_address 192.168.168.201 + allowlists → Firewall UDP 47808 → service → reboot → WebCTRL Discovery against 192.168.168.201:47808 → smoke test) | **Not confirmed complete** — see §2 |
 | Ollama install on this laptop | Still not installed (nothing on 11434) — AI Console reports NOT REACHABLE until then |
 | Duplicate-instance startup check on a real NIC | Skipped on loopback (Windows deaf-device bug, §0); behavior on the bench NIC's real broadcast domain still unverified — if BACnet goes silent after startup on the bench, disable `startup_duplicate_instance_check` first |
 | Minor audit leftovers (audit §2.4/§3.6) | Chiller `chw_iso_valve`/`ct_vfd_output`/`byp_vlv_output`/`manager_reset` ignored by the model; freezestat doesn't self-trip on low MA temp; documented, not wired |
@@ -415,10 +428,12 @@ silently ignored or partially handled.
 ## 9. Immediate Next Steps
 
 1. **Finish the bench deployment** per `NEXT_STEPS_INTEGRATION_TESTING.md`
-   (updated for 47809): set `bind_address` AND `peer_allowlist` to the
-   laptop's static IP once IT reserves it, add the UDP 47809 firewall
-   rule, move the bench WebCTRL's BACnet connection to 47809, install the
-   service, reboot, run Discovery, and finish with the AHU-1 → VAV-1
+   (verified topology): set the simulator NIC to `192.168.168.201/24` and
+   confirm `peer_allowlist` + `write_source_allowlist` = `192.168.168.200`,
+   add the UDP 47808 firewall rule (scoped to `192.168.168.200`), confirm
+   the bench WebCTRL (`192.168.168.200`, port 47809) targets
+   `192.168.168.201:47808`, install the service, reboot, run Discovery,
+   and finish with the AHU-1 → VAV-1
    smoke test visible in both WebCTRL and the dashboard. Watch the
    dashboard's Blocked-requests counter and the COV Subscriptions panel
    during Discovery — they now tell you exactly what WebCTRL is doing.

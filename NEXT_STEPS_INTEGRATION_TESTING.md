@@ -28,19 +28,21 @@ scripts\windows\install.bat
 
 ## 4. Set the real network config — do this before anything else works
 
-Edit `config\network.json`:
-- **`bind_address`** → the laptop's actual NIC IP on the bench's
-  `192.168.68.0/24` subnet (find it with `ipconfig`). **Never `127.0.0.1`
-  or `0.0.0.0`** — both were tested during development and don't reliably
-  deliver BACnet traffic.
-- **`udp_port`** → `47809` (bench standard, deliberately NOT 47808: the
-  office building-control WebCTRL at 192.168.45.34 lives on 47808 and
-  must never see bench traffic; Jeff sets the bench WebCTRL's BACnet
-  connection to 47809 to match).
-- **`peer_allowlist`** → `["<this laptop's static IP>"]` so the simulator
-  only answers the co-resident bench WebCTRL and silently drops every
-  other host (single-point connection). The dashboard's Network panel
-  shows a live count of blocked requests.
+Edit `config\network.json` to the verified bench topology:
+- **`bind_address`** → `192.168.168.201`, the simulator host's NIC IP on
+  the bench `192.168.168.0/24` subnet (confirm with `ipconfig`). **Never
+  `127.0.0.1` or `0.0.0.0`** — both were tested during development and
+  don't reliably deliver BACnet traffic.
+- **`subnet_bits`** → `24` (the bench is a `/24`).
+- **`udp_port`** → `47808`. The simulator listens on `47808`; the bench
+  WebCTRL host `192.168.168.200` runs its BACnet connection on `47809`
+  and targets the simulator at `192.168.168.201:47808`.
+- **`peer_allowlist`** → `["192.168.168.200"]` so the simulator only
+  answers the bench WebCTRL host and silently drops every other source
+  (single-point connection). The dashboard's Network panel shows a live
+  count of blocked requests.
+- **`write_source_allowlist`** → `["192.168.168.200"]` so writes are also
+  accepted only from the bench WebCTRL host.
 
 ## 5. Do one manual test run first, before wrapping it as a service
 
@@ -53,7 +55,7 @@ Confirm the dashboard opens at `http://127.0.0.1:8000` and
 
 ```
 Loaded and validated 16 equipment groups (143 total objects)
-Supervisory BACnet device 'ACI-SIM-SUPERVISOR' (instance 242000) online, bound to <your IP>:47809
+Supervisory BACnet device 'ACI-SIM-SUPERVISOR' (instance 242000) online, bound to 192.168.168.201:47808
 Duplicate device-instance check passed for instance 242000
 ```
 
@@ -74,9 +76,11 @@ A service has no desktop session, so the "Allow access" popup you might
 expect **will not appear**. Add it manually before moving on:
 
 1. `wf.msc` → **Inbound Rules → New Rule → Port → UDP → Specific local
-   ports: `47809`**
-2. Allow the connection, apply to **Private** networks, name it
-   something identifiable.
+   ports: `47808`** (or just run `scripts\windows\add_firewall_47808.bat`
+   as Administrator, which scopes the rule to `192.168.168.200`).
+2. Allow the connection, apply to **all profiles** (the bench subnet has
+   no gateway so Windows treats it as Public), name it identifiably, and
+   restrict the remote IP to the WebCTRL host `192.168.168.200`.
 
 ## 7. Get NSSM and install the service
 

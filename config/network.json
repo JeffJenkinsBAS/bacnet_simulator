@@ -1,12 +1,12 @@
 {
-  "bind_address": "192.168.168.100",
+  "bind_address": "192.168.168.201",
   "subnet_bits": 24,
-  "udp_port": 47809,
+  "udp_port": 47808,
   "vendor_identifier": 999,
   "network_number": 0,
   "private_lab_mode": true,
   "respond_to_who_is": true,
-  "write_source_allowlist": [],
-  "peer_allowlist": ["192.168.168.100"],
+  "write_source_allowlist": ["192.168.168.200"],
+  "peer_allowlist": ["192.168.168.200"],
   "startup_duplicate_instance_check": true
 }
