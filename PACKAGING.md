@@ -86,20 +86,20 @@ Two settings in `config/network.json` need to be correct — the app will
 run without changing these, but won't actually be reachable from WebCTRL or
 the real controllers until they're set for the bench's actual network:
 
-1. **`bind_address`** must be the bench laptop's real NIC IP address on the
-   `192.168.68.0/24` subnet (e.g. `192.168.68.50`), **never `0.0.0.0`** —
-   binding to `0.0.0.0` was tested during development and does not reliably
-   deliver BACnet replies with this stack (see the Phase 2 finding in the
-   project's development history). Find the laptop's IP with `ipconfig` in
-   Command Prompt.
-2. **`udp_port`** must be `47809` — deliberately NOT the standard 47808.
-   The office building-control WebCTRL (192.168.45.34, reachable over
-   Wi-Fi) lives on 47808 and must never see bench traffic; the bench
-   WebCTRL's BACnet connection is set to 47809 to match. Additionally,
-   `peer_allowlist` in the same file should be set to the laptop's own
-   static IP so the simulator drops every BACnet request from any other
-   host without replying (single-point connection to the co-resident
-   bench WebCTRL only).
+1. **`bind_address`** must be the simulator host's real NIC IP on the bench
+   `192.168.168.0/24` subnet — the verified value is `192.168.168.201`,
+   **never `0.0.0.0`** — binding to `0.0.0.0` was tested during development
+   and does not reliably deliver BACnet replies with this stack (see the
+   Phase 2 finding in the project's development history). Confirm with
+   `ipconfig` in Command Prompt.
+2. **`udp_port`** must be `47808`. The simulator listens on `47808` at
+   `192.168.168.201`; the bench WebCTRL host `192.168.168.200` runs its
+   BACnet connection on `47809` and targets the simulator at
+   `192.168.168.201:47808`. Additionally, `peer_allowlist` **and**
+   `write_source_allowlist` in the same file must be set to the WebCTRL
+   host IP `192.168.168.200`, so the simulator drops every BACnet request
+   (and every write) from any other host without replying — single-point
+   connection to the bench WebCTRL only.
 
 ## Windows Firewall
 
@@ -111,10 +111,13 @@ access**. If that prompt never appears (e.g. running unattended) and BACnet
 traffic isn't reaching the simulator, add a manual inbound rule instead:
 
 1. Open **Windows Defender Firewall with Advanced Security** (`wf.msc`).
-2. **Inbound Rules → New Rule → Port → UDP → Specific local ports:** `47809`
+2. **Inbound Rules → New Rule → Port → UDP → Specific local ports:** `47808`
    (or whatever `udp_port` is set to).
-3. Allow the connection, apply to **Private** networks only, name it
-   something identifiable like "ACI BACnet Simulator."
+3. Allow the connection, restrict the remote IP to the WebCTRL host
+   `192.168.168.200`, apply to **all profiles** (the bench subnet has no
+   gateway, so Windows classifies it as Public), and name it something
+   identifiable like "ACI BACnet Simulator." The bundled
+   `scripts\windows\add_firewall_47808.bat` does exactly this.
 
 ## Viewing the dashboard from another device on the bench network (optional)
 
@@ -231,7 +234,7 @@ machine; this isn't something to configure.
 |---|---|---|
 | `install.bat` says Python not found | Python not installed, or "Add to PATH" wasn't checked | Reinstall Python, check the PATH box |
 | Dashboard doesn't open / connection refused | Simulator not actually running, or crashed on startup | Check the console window for an error near the top (or `logs\service_stderr.log` if running as a service) |
-| WebCTRL can't discover the device | `bind_address` still `127.0.0.1` or `0.0.0.0`, firewall blocking UDP 47809, bench WebCTRL still on 47808, or its IP missing from `peer_allowlist` | Fix `config/network.json`, add the firewall rule above, set the bench WebCTRL BACnet connection to 47809 |
+| WebCTRL can't discover the device | `bind_address` not `192.168.168.201` (or still `127.0.0.1`/`0.0.0.0`), firewall blocking UDP 47808, or the WebCTRL host IP `192.168.168.200` missing from `peer_allowlist` | Fix `config/network.json`, add the firewall rule above, confirm the WebCTRL BACnet connection targets `192.168.168.201:47808` |
 | Everything was working, now nothing responds | The console window got closed (interactive mode), or the service/task stopped | Re-run `run.bat`, or check `services.msc` / Task Scheduler |
 | Need to wipe all faults/forces immediately | Any active fault, force, or scenario got left in a confusing state | Use the dashboard's red **STOP ALL SIMULATION** button — works the same whether running interactively or as a service |
 | Works when run manually, not after reboot as a service | Firewall rule was never added (no popup appears for a service) | Add the manual inbound rule — see "Windows Firewall" above |
