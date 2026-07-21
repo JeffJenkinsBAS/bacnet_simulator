@@ -185,6 +185,49 @@ async def test_validator_rejects_malformed_scenario():
     assert any("scenario definition is invalid" in e for e in result.errors)
 
 
+async def test_validator_accepts_explain_behavior_with_no_actions():
+    registry = PointRegistry([_vav_group()])
+    registry.build_objects()
+    validator = ActionValidator(registry)
+
+    bundle = LlmActionBundle(
+        request_id="r1", intent=AllowedIntent.explain_behavior,
+        summary="explains how the VAV reheat sequence works",
+        actions=[], warnings=["training tool only, no real equipment affected"],
+        requires_approval=True, confidence=0.95,
+    )
+    result = validator.validate_bundle(bundle)
+    assert result.valid is True, result.errors
+    assert result.errors == []
+
+
+async def test_validator_accepts_summarize_events_with_no_actions():
+    registry = PointRegistry([_vav_group()])
+    registry.build_objects()
+    validator = ActionValidator(registry)
+
+    bundle = LlmActionBundle(
+        request_id="r1", intent=AllowedIntent.summarize_events,
+        summary="summarizes the last few faults", actions=[],
+    )
+    result = validator.validate_bundle(bundle)
+    assert result.valid is True, result.errors
+
+
+async def test_validator_rejects_action_intent_with_no_actions():
+    registry = PointRegistry([_vav_group()])
+    registry.build_objects()
+    validator = ActionValidator(registry)
+
+    bundle = LlmActionBundle(
+        request_id="r1", intent=AllowedIntent.inject_fault,
+        summary="claims to inject a fault but carries no actions", actions=[],
+    )
+    result = validator.validate_bundle(bundle)
+    assert result.valid is False
+    assert any("bundle has no actions" in e for e in result.errors)
+
+
 # ---------------------------------------------------------- orchestration --
 
 async def test_orchestration_apply_inject_fault_actually_activates_it():
@@ -272,6 +315,29 @@ async def test_orchestration_apply_set_initial_condition_updates_site_model():
 
     assert result.applied is True
     assert dummy_site.target_oa_temp_f == 15.0
+
+
+async def test_orchestration_apply_explain_bundle_is_not_applyable_and_mutates_nothing():
+    registry, fault_manager, scenario_engine, dummy_site = _build_stack()
+    audit = _InMemoryAuditService()
+    orch = OrchestrationService(
+        ollama_client=None, registry=registry, fault_manager=fault_manager,
+        scenario_engine=scenario_engine, audit_service=audit,
+    )
+
+    bundle = LlmActionBundle(
+        request_id="r1", intent=AllowedIntent.explain_behavior,
+        summary="just an explanation, no changes", actions=[], confidence=0.95,
+    )
+    result = orch.apply(bundle)
+
+    assert result.applied is False
+    assert len(fault_manager.list_faults()) == 0
+    assert scenario_engine.scenarios == {}
+    assert dummy_site.target_oa_temp_f == 70.0
+    assert dummy_site.target_oa_humidity_pct == 50.0
+    assert any(e["event_type"] == "apply_noop" for e in audit.entries)
+    assert not any(e["event_type"] == "applied" for e in audit.entries)
 
 
 # ----------------------------------------------------------- ollama client -
