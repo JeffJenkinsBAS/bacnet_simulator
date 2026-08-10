@@ -2,7 +2,7 @@
 
 Verified bench topology (do not regress):
   - Simulator: 192.168.168.201, UDP 47808, device instance 242000.
-  - WebCTRL (only allowed peer/write source): 192.168.168.200.
+  - WebCTRL/controllers: 192.168.168.1-.7 and 192.168.168.200.
 
 These tests guard both the deployed configuration files and the runtime
 guard behavior against the prior incorrect values (simulator 192.168.168.100
@@ -21,6 +21,7 @@ CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 
 SIMULATOR_IP = "192.168.168.201"
 WEBCTRL_IP = "192.168.168.200"
+VERIFIED_PEERS = [f"192.168.168.{n}" for n in range(1, 8)] + [WEBCTRL_IP]
 SIMULATOR_PORT = 47808
 DEVICE_INSTANCE = 242000
 
@@ -48,8 +49,8 @@ def test_deployed_network_config_matches_verified_topology():
     assert cfg.bind_address == SIMULATOR_IP
     assert cfg.subnet_bits == 24
     assert cfg.udp_port == SIMULATOR_PORT
-    assert cfg.peer_allowlist == [WEBCTRL_IP]
-    assert cfg.write_source_allowlist == [WEBCTRL_IP]
+    assert cfg.peer_allowlist == VERIFIED_PEERS
+    assert cfg.write_source_allowlist == VERIFIED_PEERS
 
 
 def test_deployed_supervisory_device_instance_is_verified_value():
@@ -103,10 +104,11 @@ def _guard_with(config: NetworkConfig) -> NetworkGuardedApplication:
     return guard
 
 
-def test_peer_guard_admits_webctrl_and_blocks_everything_else():
+def test_peer_guard_admits_verified_controllers_and_blocks_everything_else():
     guard = _guard_with(_load_network_config())
 
-    assert guard._peer_blocked(_FakeApdu(WEBCTRL_IP)) is False
+    for allowed_ip in VERIFIED_PEERS:
+        assert guard._peer_blocked(_FakeApdu(allowed_ip)) is False
     assert guard.messages_blocked == 0
 
     # The simulator's own host and the prior incorrect bench IP must be blocked.

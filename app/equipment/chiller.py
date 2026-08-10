@@ -22,11 +22,19 @@ from app.registry import PointRegistry
 
 @dataclass
 class ChillerParameters:
-    start_delay_seconds: float = 30.0
+    # Run proof is accelerated for the showcase so a healthy start proves
+    # before the command center's 15-real-second failure timer. CHWS thermal
+    # pull-down remains intentionally slower.
+    start_delay_seconds: float = 10.0
     chws_setpoint_f: float = 44.0
+    minimum_chws_setpoint_f: float = 38.0
+    maximum_chws_setpoint_f: float = 54.0
     chws_time_constant_seconds: float = 45.0
     chwr_rise_when_loaded_f: float = 10.0
+    design_chw_flow_gpm: float = 300.0
+    idle_evaporator_temp_f: float = 55.0
     pump_start_delay_seconds: float = 3.0
+    isolation_valve_time_constant_seconds: float = 4.0
     tower_fan_start_delay_seconds: float = 5.0
     tower_approach_f: float = 7.0  # CWS approaches ambient WET-bulb + this when the tower fan is running
     tower_time_constant_seconds: float = 30.0
@@ -53,6 +61,9 @@ class ChillerModel(EquipmentModel):
         self._proven = False
         self._chws_temp = 55.0
         self._chwr_temp = 55.0
+        self._evaporator_inlet_temp_f = 55.0
+        self._evaporator_flow_gpm = 0.0
+        self._evaporator_heat_removed_btuh = 0.0
         self._cws_temp = 75.0
         self._cwr_temp = 80.0
         self._basin_temp = 70.0
@@ -62,6 +73,7 @@ class ChillerModel(EquipmentModel):
         self._chw_pump_frac = 0.0
         self._cw_pump_frac = 0.0
         self._tower_fan_frac = 0.0
+        self._chw_iso_frac = 0.0
 
     @property
     def proven(self) -> bool:
@@ -73,8 +85,30 @@ class ChillerModel(EquipmentModel):
         return self._chws_temp
 
     @property
+    def chwr_temp_f(self) -> float:
+        return self._chwr_temp
+
+    @property
+    def evaporator_heat_removed_btuh(self) -> float:
+        return self._evaporator_heat_removed_btuh
+
+    def set_evaporator_conditions(
+        self,
+        *,
+        return_temp_f: float,
+        flow_gpm: float,
+    ) -> None:
+        """Accept the parent plant header state for the next thermal tick."""
+        self._evaporator_inlet_temp_f = float(return_temp_f)
+        self._evaporator_flow_gpm = max(0.0, float(flow_gpm))
+
+    @property
     def chw_pump_running(self) -> bool:
         return self._chw_pump_running
+
+    @property
+    def chw_isolation_open(self) -> bool:
+        return self._chw_iso_frac > 0.5
 
     def tick(self, dt_seconds: float) -> None:
         emerg_trip = self.plant_registry.get_commanded("emerg_shutdown_trip") == 1.0
@@ -86,6 +120,7 @@ class ChillerModel(EquipmentModel):
 
         enable = self.registry.get_commanded("chiller_enable") == 1.0
         ss = self.registry.get_commanded("chiller_ss") == 1.0
+        chw_iso_cmd = self.registry.get_commanded("chw_iso_valve") == 1.0
         chw_pump_cmd = self.registry.get_commanded("chw_pump_ss") == 1.0
         cw_pump_cmd = self.registry.get_commanded("cw_pump_ss") == 1.0
         ct_fan_cmd = self.registry.get_commanded("ct_fan_ss") == 1.0
@@ -98,6 +133,7 @@ class ChillerModel(EquipmentModel):
             run_command = False
         if emerg_trip or refrig_trip:
             run_command = False
+            chw_iso_cmd = False
             chw_pump_cmd = False
             cw_pump_cmd = False
             ct_fan_cmd = False
@@ -116,13 +152,23 @@ class ChillerModel(EquipmentModel):
             self._tower_fan_frac, 1.0 if ct_fan_cmd else 0.0, dt_seconds, self.params.tower_fan_start_delay_seconds
         )
         self._tower_fan_running = self._tower_fan_frac > 0.5
+        self._chw_iso_frac = self.approach(
+            self._chw_iso_frac,
+            1.0 if chw_iso_cmd else 0.0,
+            dt_seconds,
+            self.params.isolation_valve_time_constant_seconds,
+        )
 
         # Flow-proving interlock: a real chiller gets no start permit without
         # proven evaporator AND condenser water flow, and trips if flow is
         # lost while running. High condenser water temp also trips the unit
         # (high-head cutout); it auto-recovers here once the loop cools,
         # standing in for a manual-reset lockout for training convenience.
-        flow_proven = self._chw_pump_running and self._cw_pump_running
+        flow_proven = (
+            self.chw_isolation_open
+            and self._chw_pump_running
+            and self._cw_pump_running
+        )
         high_head = self._cws_temp >= self.params.high_head_trip_f
         if run_command and flow_proven and not high_head:
             self._enabled_seconds += dt_seconds
@@ -133,11 +179,63 @@ class ChillerModel(EquipmentModel):
             and self._enabled_seconds >= self.params.start_delay_seconds
         )
 
-        setpoint = chws_reset if chws_reset else self.params.chws_setpoint_f
-        target_chws = setpoint if self._proven else 55.0
-        self._chws_temp = self.approach(self._chws_temp, target_chws, dt_seconds, self.params.chws_time_constant_seconds)
-        target_chwr = self._chws_temp + (self.params.chwr_rise_when_loaded_f if self._proven else 0.0)
-        self._chwr_temp = self.approach(self._chwr_temp, target_chwr, dt_seconds, self.params.chws_time_constant_seconds)
+        setpoint = (
+            chws_reset
+            if chws_reset is not None
+            and self.params.minimum_chws_setpoint_f <= chws_reset <= self.params.maximum_chws_setpoint_f
+            else self.params.chws_setpoint_f
+        )
+        evaporator_flow = (
+            self._evaporator_flow_gpm
+            if self._chw_pump_running and self.chw_isolation_open
+            else 0.0
+        )
+        if evaporator_flow > 0.0:
+            target_chwr = self._evaporator_inlet_temp_f
+            if self._proven:
+                # The compressor modulates only enough to reach setpoint and
+                # cannot remove more than the unit's design 500*GPM*delta-T
+                # capacity.  Load therefore determines delta-T; proof alone
+                # no longer fabricates a fixed 10 F rise.
+                nominal_capacity_btuh = (
+                    500.0
+                    * self.params.design_chw_flow_gpm
+                    * self.params.chwr_rise_when_loaded_f
+                )
+                required_btuh = max(
+                    0.0,
+                    500.0
+                    * evaporator_flow
+                    * (target_chwr - setpoint),
+                )
+                removed_btuh = min(nominal_capacity_btuh, required_btuh)
+                target_chws = target_chwr - (
+                    removed_btuh / max(500.0 * evaporator_flow, 1.0)
+                )
+            else:
+                removed_btuh = 0.0
+                # With circulation but no compressor, water passes through
+                # the evaporator without refrigeration and the loop warms
+                # from downstream building load.
+                target_chws = target_chwr
+        else:
+            removed_btuh = 0.0
+            target_chws = self.params.idle_evaporator_temp_f
+            target_chwr = self.params.idle_evaporator_temp_f
+
+        self._chws_temp = self.approach(
+            self._chws_temp,
+            target_chws,
+            dt_seconds,
+            self.params.chws_time_constant_seconds,
+        )
+        self._chwr_temp = self.approach(
+            self._chwr_temp,
+            target_chwr,
+            dt_seconds,
+            self.params.chws_time_constant_seconds,
+        )
+        self._evaporator_heat_removed_btuh = removed_btuh
 
         # --- Condenser / tower side ---
         # Evaporative cooling pulls tower water toward ambient WET-bulb, not
@@ -158,12 +256,22 @@ class ChillerModel(EquipmentModel):
         else:
             target_cws = oa_temp
         self._cws_temp = self.approach(self._cws_temp, target_cws, dt_seconds, self.params.tower_time_constant_seconds)
-        target_cwr = self._cws_temp + (8.0 if self._proven else 0.0)
+        nominal_capacity_btuh = max(
+            1.0,
+            500.0
+            * self.params.design_chw_flow_gpm
+            * self.params.chwr_rise_when_loaded_f,
+        )
+        condenser_load_fraction = max(
+            0.0,
+            min(1.0, self._evaporator_heat_removed_btuh / nominal_capacity_btuh),
+        )
+        target_cwr = self._cws_temp + 8.0 * condenser_load_fraction
         self._cwr_temp = self.approach(self._cwr_temp, target_cwr, dt_seconds, self.params.tower_time_constant_seconds)
         self._basin_temp = self.approach(self._basin_temp, oa_temp, dt_seconds, self.params.basin_time_constant_seconds)
 
         self.registry.set("chiller_status", 1.0 if self._proven else 0.0)
-        self.registry.set("chw_iso_vlv_sts", 1.0 if run_command else 0.0)
+        self.registry.set("chw_iso_vlv_sts", 1.0 if self.chw_isolation_open else 0.0)
         self.registry.set("chw_pump_status", 1.0 if self._chw_pump_running else 0.0)
         self.registry.set("cw_pump_status", 1.0 if self._cw_pump_running else 0.0)
         self.registry.set("ct_fan_status", 1.0 if self._tower_fan_running else 0.0)

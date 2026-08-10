@@ -21,6 +21,7 @@ from app.equipment.boiler import BoilerModel, BoilerParameters
 from app.equipment.chiller import ChillerModel, ChillerParameters
 from app.equipment.exhaust_fan import ExhaustFanModel, ExhaustFanParameters
 from bacpypes3.basetypes import BinaryPV
+from bacpypes3.primitivedata import Real
 
 pytestmark = pytest.mark.asyncio
 
@@ -64,6 +65,17 @@ async def _write_bool(registry: PointRegistry, group_id: str, alias: str, value:
     await obj.write_property("presentValue", BinaryPV("active" if value else "inactive"), priority=priority)
 
 
+async def _write_analog(
+    registry: PointRegistry,
+    group_id: str,
+    alias: str,
+    value: float,
+    priority: int = 8,
+) -> None:
+    obj = registry.all_points()[f"{group_id}.{alias}"].bacnet_object
+    await obj.write_property("presentValue", Real(value), priority=priority)
+
+
 async def test_ahu_fan_actually_proves_after_start_delay():
     ahu_group = _group("TEST-AHU", 90000, [
         _ao("cooling_valve", 20), _ao("heating_valve", 21), _ao("preheat_valve", 22), _ao("economizer", 23),
@@ -71,6 +83,7 @@ async def test_ahu_fan_actually_proves_after_start_delay():
         _bv("high_static_pressure_trip", 100), _bv("freezestat_trip", 101),
         _ai("ahu_ma_temp", 1), _ai("ahu_ra_temp", 2), _ai("ahu_ra_humidity", 3, initial=50.0), _ai("ahu_sa_temp", 4),
         _bi("ra_smoke_detector", 40), _bi("sa_smoke_detector", 41),
+        _bi("sa_fan_status", 42), _bi("ra_fan_status", 43),
     ])
     site_group = _group("TEST-SITE", 91000, [_av_oa("oa_temp", 80)])
 
@@ -85,6 +98,8 @@ async def test_ahu_fan_actually_proves_after_start_delay():
         ahu.tick(1.0)
 
     assert ahu.fan_running is True, "fan should have proved on after 30s with a 3s start time constant"
+    assert registry.view("TEST-AHU").get("sa_fan_status") == 1.0
+    assert registry.view("TEST-AHU").get("ra_fan_status") == 0.0
 
 
 async def test_chiller_pumps_and_tower_fan_actually_prove():
@@ -109,6 +124,7 @@ async def test_chiller_pumps_and_tower_fan_actually_prove():
                                                           tower_fan_start_delay_seconds=3.0))
     await _write_bool(registry, "TEST-CHILLER", "chiller_enable", True)
     await _write_bool(registry, "TEST-CHILLER", "chiller_ss", True)
+    await _write_bool(registry, "TEST-CHILLER", "chw_iso_valve", True)
     await _write_bool(registry, "TEST-CHILLER", "chw_pump_ss", True)
     await _write_bool(registry, "TEST-CHILLER", "cw_pump_ss", True)
     await _write_bool(registry, "TEST-CHILLER", "ct_fan_ss", True)
@@ -153,3 +169,64 @@ async def test_exhaust_fan_actually_proves():
 
     assert fan._running is True
     assert registry.view("TEST-EF").get("fan_status") == 1.0
+
+
+async def test_exhaust_vfd_trims_building_pressure_from_ahu_supply():
+    ef_group = _group(
+        "TEST-EF-VFD",
+        97000,
+        [
+            _ao("exh_air_damper", 20),
+            _ao("vfd_speed_command", 21),
+            _bo("exh_fan_ss", 60),
+            _bi("fan_status", 40),
+        ],
+    )
+    site_group = _group(
+        "TEST-PRESSURE",
+        98000,
+        [
+            {
+                "alias": "building_pressure",
+                "object_type": "analog-input",
+                "object_instance": 82,
+                "object_name": "building_pressure",
+                "units": "inches-of-water",
+                "signal_direction": "sim_to_webctrl",
+                "initial_value": 0.0,
+                "normal_range": {"low": 0.03, "high": 0.10},
+            }
+        ],
+    )
+    registry = PointRegistry([ef_group, site_group])
+    registry.build_objects()
+
+    class RunningAhu:
+        fan_running = True
+
+    fan = ExhaustFanModel(
+        "ACI-SIM-EF-1",
+        registry.view("TEST-EF-VFD"),
+        parameters=ExhaustFanParameters(
+            proof_delay_seconds=2.0,
+            pressure_time_constant_seconds=2.0,
+        ),
+        site_registry=registry.view("TEST-PRESSURE"),
+        ahu_model=RunningAhu(),
+    )
+    await _write_bool(registry, "TEST-EF-VFD", "exh_fan_ss", True)
+    await _write_analog(registry, "TEST-EF-VFD", "exh_air_damper", 100.0)
+    await _write_analog(registry, "TEST-EF-VFD", "vfd_speed_command", 50.0)
+
+    for _ in range(20):
+        fan.tick(1.0)
+
+    pressure_at_half_speed = registry.view("TEST-PRESSURE").get("building_pressure")
+    assert 0.035 <= pressure_at_half_speed <= 0.055
+    assert registry.view("TEST-EF-VFD").get("fan_status") == 1.0
+
+    await _write_analog(registry, "TEST-EF-VFD", "vfd_speed_command", 100.0)
+    for _ in range(20):
+        fan.tick(1.0)
+
+    assert registry.view("TEST-PRESSURE").get("building_pressure") < pressure_at_half_speed

@@ -101,6 +101,109 @@ async def test_write_damper_position_and_read_back_with_priority_array(running_t
     assert priority_array is not None
 
 
+async def test_read_only_vav_design_and_feedback_values_reject_bacnet_writes(running_transport):
+    _, client_port = _allocate_ports()
+    client = await _make_client(client_port)
+    server_addr = f"127.0.0.1:{running_transport.test_port}"
+
+    for object_instance, expected in (
+        (11081, 300.0),
+        (11082, 550.0),
+        (11083, 300.0),
+        (11084, 1100.0),
+        (11085, 0.0),
+    ):
+        object_identifier = f"analog-value,{object_instance}"
+        baseline = await client.read_property(
+            server_addr,
+            object_identifier,
+            "presentValue",
+        )
+        assert float(baseline) == pytest.approx(expected)
+
+        with pytest.raises(BaseException):
+            await client.write_property(
+                server_addr,
+                object_identifier,
+                "presentValue",
+                expected + 1.0,
+                priority=8,
+            )
+
+        unchanged = await client.read_property(
+            server_addr,
+            object_identifier,
+            "presentValue",
+        )
+        assert float(unchanged) == pytest.approx(expected)
+
+
+async def test_analog_limits_are_published_and_out_of_range_writes_are_rejected(running_transport):
+    _, client_port = _allocate_ports()
+    client = await _make_client(client_port)
+    server_addr = f"127.0.0.1:{running_transport.test_port}"
+
+    minimum = await client.read_property(
+        server_addr,
+        "analog-output,11020",
+        "minPresValue",
+    )
+    maximum = await client.read_property(
+        server_addr,
+        "analog-output,11020",
+        "maxPresValue",
+    )
+    assert float(minimum) == 0.0
+    assert float(maximum) == 100.0
+
+    with pytest.raises(BaseException):
+        await client.write_property(
+            server_addr,
+            "analog-output,11020",
+            "presentValue",
+            500.0,
+            priority=8,
+        )
+
+    value = await client.read_property(
+        server_addr,
+        "analog-output,11020",
+        "presentValue",
+    )
+    assert value != pytest.approx(500.0)
+
+
+async def test_out_of_range_write_property_multiple_is_rejected_before_commit(running_transport):
+    from bacpypes3.apdu import WritePropertyMultipleRequest
+    from bacpypes3.basetypes import PropertyValue, WriteAccessSpecification
+    from bacpypes3.constructeddata import Any
+    from bacpypes3.primitivedata import Real
+
+    encoded = Any(Real(500.0))
+    request = WritePropertyMultipleRequest(
+        listOfWriteAccessSpecs=[
+            WriteAccessSpecification(
+                objectIdentifier=("analog-output", 11020),
+                listOfProperties=[
+                    PropertyValue(
+                        propertyIdentifier="presentValue",
+                        value=encoded,
+                        priority=8,
+                    )
+                ],
+            )
+        ]
+    )
+
+    obj = running_transport.registry.all_points()[
+        "ACI-SIM-VAV-1.damper_position_command"
+    ].bacnet_object
+    original = float(obj.presentValue)
+    with pytest.raises(BaseException):
+        await running_transport.app.do_WritePropertyMultipleRequest(request)
+    assert float(obj.presentValue) == original
+
+
 async def test_write_source_allowlist_rejects_disallowed_source():
     """A write from a source IP not on the allowlist must be rejected, not applied."""
     server_port, client_port = _allocate_ports()

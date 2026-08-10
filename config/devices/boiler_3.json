@@ -2,6 +2,7 @@
   "group_id": "ACI-SIM-BOILER-3",
   "instance_offset": 8000,
   "description": "Simulated boiler 3 unit.",
+  "model_parameters": {},
   "points": [
     {
       "alias": "boiler_ok",
@@ -60,15 +61,15 @@
       "object_instance": 20,
       "object_name": "BOILER-3 HWS Stpt Reset",
       "description": "Boiler 3 hot-water-supply setpoint reset",
-      "units": "percent",
+      "units": "degrees-fahrenheit",
       "signal_direction": "webctrl_to_sim",
       "writable": true,
       "commandable": true,
-      "initial_value": 0.0,
-      "minimum": 0.0,
-      "maximum": 100.0,
+      "initial_value": 180.0,
+      "minimum": 100.0,
+      "maximum": 200.0,
       "update_interval_seconds": 1,
-      "relinquish_default": 0.0
+      "relinquish_default": 180.0
     }
   ]
 }

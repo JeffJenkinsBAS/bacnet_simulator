@@ -11,12 +11,20 @@ if not exist venv (
     exit /b 1
 )
 
+venv\Scripts\python.exe -c "import app.api, app.config_models, app.engine, bacpypes3, fastapi, pydantic, uvicorn"
+if errorlevel 1 (
+    echo ERROR: the project virtual environment is broken or incomplete.
+    echo Run scripts\windows\install.bat before trying to start the simulator.
+    pause
+    exit /b 1
+)
+
 call venv\Scripts\activate.bat
 
 echo ============================================================
 echo  ACI BACnet Building Simulation Platform
 echo ============================================================
-echo  Dashboard:  http://127.0.0.1:8000
+echo  Dashboard:  http://127.0.0.1:8001
 echo  BACnet:     see config\network.json for bind address / port
 echo.
 echo  This window IS the running application. Closing it, or
@@ -25,7 +33,7 @@ echo  object it publishes. Minimize it, don't close it.
 echo ============================================================
 echo.
 
-start "" http://127.0.0.1:8000
+start "" http://127.0.0.1:8001
 
 python -m app.main
 

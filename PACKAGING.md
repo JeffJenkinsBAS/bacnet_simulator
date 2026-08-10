@@ -73,7 +73,7 @@ matching machine.
 scripts\windows\run.bat
 ```
 
-This opens the dashboard automatically at **http://127.0.0.1:8000** and
+This opens the dashboard automatically at **http://127.0.0.1:8001** and
 starts the BACnet device in the same console window. **The console window
 IS the running application** — minimize it, don't close it. Closing it or
 pressing Ctrl+C inside it stops the simulator and every BACnet object it
@@ -96,10 +96,11 @@ the real controllers until they're set for the bench's actual network:
    `192.168.168.201`; the bench WebCTRL host `192.168.168.200` runs its
    BACnet connection on `47809` and targets the simulator at
    `192.168.168.201:47808`. Additionally, `peer_allowlist` **and**
-   `write_source_allowlist` in the same file must be set to the WebCTRL
-   host IP `192.168.168.200`, so the simulator drops every BACnet request
-   (and every write) from any other host without replying — single-point
-   connection to the bench WebCTRL only.
+   `write_source_allowlist` in the same file must match the verified live
+   BACnet peers: `192.168.168.1` through `.7` plus `192.168.168.200`.
+   The simulator drops requests and writes from every other source without
+   replying. Treat this live list as authoritative over older notes that
+   mention only `.200`.
 
 ## Windows Firewall
 
@@ -113,20 +114,20 @@ traffic isn't reaching the simulator, add a manual inbound rule instead:
 1. Open **Windows Defender Firewall with Advanced Security** (`wf.msc`).
 2. **Inbound Rules → New Rule → Port → UDP → Specific local ports:** `47808`
    (or whatever `udp_port` is set to).
-3. Allow the connection, restrict the remote IP to the WebCTRL host
-   `192.168.168.200`, apply to **all profiles** (the bench subnet has no
+3. Allow the connection, restrict the remote IP to `192.168.168.1` through
+   `.7` plus `192.168.168.200`, apply to **all profiles** (the bench subnet has no
    gateway, so Windows classifies it as Public), and name it something
    identifiable like "ACI BACnet Simulator." The bundled
    `scripts\windows\add_firewall_47808.bat` does exactly this.
 
 ## Viewing the dashboard from another device on the bench network (optional)
 
-The web dashboard (`http://127.0.0.1:8000`) is separate from the BACnet
+The web dashboard (`http://127.0.0.1:8001`) is separate from the BACnet
 bind address and has none of the same restrictions — it's plain HTTP, not
 BACnet broadcast traffic. If you want to view it from another device on the
 bench network (a second laptop, a tablet), change the dashboard's bind host
 in `app/main.py`'s `main()` function from `127.0.0.1` to `0.0.0.0`, then
-browse to `http://<bench-laptop-ip>:8000` from the other device. Leave
+browse to `http://<bench-laptop-ip>:8001` from the other device. Leave
 `config/network.json`'s `bind_address` alone — that one setting is genuinely
 BACnet-specific and the 0.0.0.0 restriction there stays in force regardless
 of this dashboard setting.
@@ -176,6 +177,16 @@ addition to the app's own `logs\aci_sim.log` and `logs\bacnet_traffic.log`,
 which work identically whether run as a service or interactively), and
 configures it to restart automatically if the process ever dies.
 
+**Restarting after a maintenance update:**
+
+```
+scripts\windows\restart_service.bat
+```
+
+Run it as Administrator. The script restarts only
+`ACIBACnetSimulator`, then waits for a fresh dashboard process and verifies
+the expected 16 groups / 143 points before reporting success.
+
 **Removing it:**
 
 ```
@@ -222,7 +233,7 @@ maintenance/updates.
 
 ### Viewing the dashboard when running as a service
 
-No difference from running interactively — `http://127.0.0.1:8000` works
+No difference from running interactively — `http://127.0.0.1:8001` works
 identically whether the process is running as a service (under the Local
 System account, a different Windows session) or launched from a logged-in
 user's console. Loopback connections work across sessions on the same

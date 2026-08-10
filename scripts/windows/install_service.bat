@@ -15,6 +15,14 @@ if not exist venv\Scripts\python.exe (
     exit /b 1
 )
 
+venv\Scripts\python.exe -c "import app.api, app.config_models, app.engine, bacpypes3, fastapi, pydantic, uvicorn"
+if errorlevel 1 (
+    echo ERROR: the project virtual environment is broken or incomplete.
+    echo Run scripts\windows\install.bat before installing the service.
+    pause
+    exit /b 1
+)
+
 set NSSM=tools\nssm\nssm.exe
 if not exist "%NSSM%" (
     echo ERROR: nssm.exe not found at %NSSM%
@@ -48,7 +56,7 @@ echo Installing service "%SERVICE_NAME%" ...
 "%NSSM%" install %SERVICE_NAME% "%PYTHON_EXE%" "-m app.main"
 "%NSSM%" set %SERVICE_NAME% AppDirectory "%PROJECT_DIR%"
 "%NSSM%" set %SERVICE_NAME% DisplayName "ACI BACnet Building Simulation Platform"
-"%NSSM%" set %SERVICE_NAME% Description "Simulates BACnet building equipment for the WebCTRL training bench. Dashboard at http://127.0.0.1:8000 -- see PACKAGING.md."
+"%NSSM%" set %SERVICE_NAME% Description "Simulates BACnet building equipment for the WebCTRL training bench. Dashboard at http://127.0.0.1:8001 -- see PACKAGING.md."
 "%NSSM%" set %SERVICE_NAME% Start SERVICE_AUTO_START
 "%NSSM%" set %SERVICE_NAME% AppStdout "%LOG_DIR%\service_stdout.log"
 "%NSSM%" set %SERVICE_NAME% AppStderr "%LOG_DIR%\service_stderr.log"
@@ -74,7 +82,7 @@ echo ============================================================
 echo  Done. The simulator will now start automatically on every
 echo  Windows boot, even before anyone logs in.
 echo.
-echo  Dashboard:     http://127.0.0.1:8000
+echo  Dashboard:     http://127.0.0.1:8001
 echo  Service name:  %SERVICE_NAME%  (visible in services.msc)
 echo  Logs:          logs\service_stdout.log, logs\service_stderr.log,
 echo                 plus the normal logs\aci_sim.log / bacnet_traffic.log

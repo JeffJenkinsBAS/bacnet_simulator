@@ -209,7 +209,7 @@ def build_workbook():
                                         "small local instance number gives the real global Object Instance shown here. "
                                         "Offsets are (group's position in the fleet) x 1000, e.g. AHU-1 = 9000."),
         ("Zone Temp for VAV-1 / VAV-2", "Not simulated -- sourced from real communicating ZS thermostats on the bench, "
-                                          "per Jeff's confirmation. VAV-3/4/5 are virtual zones and DO publish a simulated Zone Temp."),
+                                          "per Jeff's confirmation. VAV-3 through VAV-17 are virtual zones and DO publish a simulated Zone Temp."),
         ("Source of truth", "This workbook is generated directly from config/supervisory_device.json and "
                               "config/devices/*.json via scripts/generate_point_mapping_workbook.py -- re-run that "
                               "script any time the object model changes rather than hand-editing this file."),
