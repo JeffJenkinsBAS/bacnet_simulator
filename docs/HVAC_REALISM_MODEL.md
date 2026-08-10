@@ -45,7 +45,7 @@ flowchart LR
 | Downstream result | Required parent state | Response when unavailable |
 |---|---|---|
 | Chilled-water flow | CHW pump running and isolation valve open | Unit contributes no common-header flow |
-| AHU mechanical cooling | Chilled-water plant has usable flow and CHWS colder than entering air by the coil approach | Cooling-coil command cannot create cooling; residual cold water may provide temporary cooling after compressor shutdown |
+| AHU mechanical cooling | Chilled-water plant has usable flow and CHWS colder than entering air | Cooling-coil command cannot create cooling; residual cold water may provide temporary cooling after compressor shutdown |
 | AHU heating | Hot-water plant has proven capacity and usable HWS | Heating-valve command cannot create heat |
 | AHU economizer | Reliable OA/RA conditions, suitable outdoor enthalpy, cooling benefit, and no safety/low-limit override | The raw WebCTRL request remains visible while the effective damper is limited to minimum ventilation or fully closed |
 | AHU duct static | Supply fan command and proof, VFD speed, and aggregate VAV damper relief | Pressure and VFD feedback are exactly zero while the loop is inactive |
@@ -76,17 +76,30 @@ loop while preserving energy through the full chain:
    `Qair = 4.5 x CFM x (hentering - hleaving)` in Btu/h.
 5. The same load appears on the water side as
    `Qwater = 500 x GPM x (CHWR - CHWS)`.
-6. The common return header includes the load diluted by primary/bypass flow,
-   and each connected chiller receives that return temperature.
-7. A proven compressor removes only the heat required to reach setpoint, up
+6. Pump work and ambient piping/mechanical-room transfer are added to the
+   finite 1,200-gallon loop inventory. The common CHWS/CHWR sensors straddle
+   the load-side heat transfer, so their separation follows
+   `delta-T = (Qcoil + Qambient) / (500 x common GPM)`.
+7. Each connected chiller receives the common return temperature. A proven
+   compressor removes only the heat required to reach setpoint, up
    to `500 x design GPM x design delta-T`; an off compressor with circulation
    passes warming return water through without refrigeration.
 
 Consequently, a running unloaded chiller approaches zero evaporator delta-T.
 With the compressor off, an open coil valve, and a running CHW pump, CHWR is
-warmer than CHWS while useful heat transfer remains and the whole loop warms
-until the water is no longer cold enough to cool the air. With no flow or a
+warmer than CHWS while useful heat transfer remains. Pump friction adds
+12,000 Btu/h per running CHW pump and the loop exchanges heat with a
+return-air/outdoor-air-weighted mechanical-room ambient. The whole loop thus
+warms until the water is no longer cold enough to cool the air. With no flow or a
 closed coil valve, a meaningful load delta-T is not fabricated.
+
+Each chiller's `chiller_enable` point is an availability permission whose
+relinquish default is active. WebCTRL therefore starts the machine with the
+`chiller_ss` Start/Stop command. After the 10-second proof delay, an open CHW
+isolation valve, proven CHW and condenser-water pumps, healthy safeties, and
+no plant shutdown produce both the unit `chiller_status` readback and the
+manager `chillerN_ok` readback. Removing Start or any required proof removes
+both running indications.
 
 VAV-1 and VAV-2 still leave their zone-temperature BACnet points under their
 external physical controllers. Internally, they now carry shadow zone states
@@ -111,10 +124,14 @@ are not omitted from AHU return air.
   the unit.
 - Chilled-water supply reset is constrained to **38-54 degrees F**; the
   nominal training value is **44 degrees F**.
-- An enabled AHU cooling coil targets approximately **CHWS + 10 degrees F**,
-  then the supply fan adds approximately **2 degrees F**. With 44-degree
-  chilled water, the normal AHU discharge band is approximately **52-58
-  degrees F**.
+- The AHU cooling coil uses **75% design sensible effectiveness** at full
+  valve and usable design flow: leaving-air temperature approaches
+  `entering air - 0.75 x (entering air - CHWS)`, then the supply fan adds
+  approximately **2 degrees F**. With 44-degree chilled water and roughly
+  72-degree mixed air, normal discharge is about 53 degrees F. Even 55-degree
+  circulating water absorbs useful building heat and produces roughly
+  61-degree discharge air; capacity naturally collapses as CHWS approaches
+  entering-air temperature.
 - Coil leaving-air targets are capacity-limited by actual terminal CFM,
   available CHW flow, valve position, and a 14-degree F maximum modeled
   coil-water rise. Reported coil BTU/h and coil CHWR obey the same air/water
@@ -175,9 +192,11 @@ training deadband; many occupied commercial sequences use a wider deadband.
 
 Remaining sizing approximations are intentional and configurable: each
 fixed-speed chiller circuit is 300 GPM with a 10-degree F design evaporator
-rise (1,500,000 Btu/h, or 125 refrigeration tons), pressure drop is not yet
-solved from a pipe network, and terminal return flow currently equals primary
-supply flow because per-zone exhaust/transfer-air paths are not configured.
+rise (1,500,000 Btu/h, or 125 refrigeration tons), the active loop contains
+1,200 gallons, loop ambient conductance is 450 Btu/h-degree F, and each
+running distribution pump adds 12,000 Btu/h. Pressure drop is not yet solved
+from a pipe network, and terminal return flow currently equals primary supply
+flow because per-zone exhaust/transfer-air paths are not configured.
 
 ## Airside economizer availability
 

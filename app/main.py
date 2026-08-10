@@ -149,7 +149,12 @@ def build_equipment(registry: PointRegistry, fault_manager: FaultManager) -> lis
         )
     # Managers tick after their units and expose typed physical loop state to
     # the downstream AHU and VAV models.
-    chw_manager = ChwPlantManagerModel("ACI-SIM-CHW-PLANT", plant_view, chillers)
+    chw_manager = ChwPlantManagerModel(
+        "ACI-SIM-CHW-PLANT",
+        plant_view,
+        chillers,
+        site_registry=site_view,
+    )
     boiler_manager = BoilerManagerModel("ACI-SIM-BOILER-MGR", boiler_mgr_view, boilers)
 
     ahu = AhuModel(

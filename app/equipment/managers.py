@@ -30,13 +30,22 @@ from app.registry import PointRegistry
 @dataclass
 class ChwPlantParameters:
     design_flow_per_chiller_gpm: float = 300.0
-    header_time_constant_seconds: float = 20.0  # header sensors blend, they don't step
-    idle_header_temp_f: float = 54.0  # stagnant loop drifts here with no chillers proven
+    header_time_constant_seconds: float = 8.0  # sensor/header mixing lag
+    idle_header_temp_f: float = 70.0  # initial water temperature, not a fixed target
     header_return_rise_f: float = 10.0
-    full_capacity_supply_temp_f: float = 44.0
-    unusable_supply_temp_f: float = 55.0
     minimum_usable_flow_gpm: float = 50.0
     maximum_header_return_rise_f: float = 30.0
+    # Roughly 8-10 gallons/ton for the active 125-ton circuit, including
+    # mains, coil, evaporator, and buffer volume. One unit can therefore pull
+    # an ambient loop down in about ten minutes; additional units shorten it.
+    loop_volume_gallons: float = 1200.0
+    water_heat_capacity_btuper_gallon_f: float = 8.33
+    pump_heat_btuh_per_running_pump: float = 12_000.0
+    loop_ambient_ua_btuh_per_f: float = 450.0
+    outdoor_ambient_fraction: float = 0.15
+    mechanical_room_temp_offset_f: float = 2.0
+    minimum_loop_temp_f: float = 34.0
+    maximum_loop_temp_f: float = 100.0
 
 
 class ChwPlantManagerModel(EquipmentModel):
@@ -48,14 +57,21 @@ class ChwPlantManagerModel(EquipmentModel):
         registry: PointRegistry,
         chillers: list[ChillerModel],
         parameters: ChwPlantParameters | None = None,
+        site_registry: PointRegistry | None = None,
     ):
         super().__init__(equipment_id, registry)
         self.chillers = chillers
         self.params = parameters or ChwPlantParameters()
+        self.site_registry = site_registry
         self._chws_common = self.params.idle_header_temp_f
         self._chwr_common = self.params.idle_header_temp_f
+        self._loop_mean_temp_f = self.params.idle_header_temp_f
         self._flow_common = 0.0
         self._cooling_coils: list = []
+        self._coil_heat_btuh = 0.0
+        self._pump_heat_btuh = 0.0
+        self._ambient_heat_btuh = 0.0
+        self._refrigeration_btuh = 0.0
 
     def set_cooling_coils(self, cooling_coils: list) -> None:
         """Attach downstream coil-load providers after graph construction."""
@@ -79,20 +95,14 @@ class ChwPlantManagerModel(EquipmentModel):
 
     @property
     def cooling_capacity_fraction(self) -> float:
-        """Usable CHW capacity available to downstream air-side coils."""
+        """Fraction of design coil water flow physically available.
+
+        Water temperature is handled by the AHU coil effectiveness model.
+        Treating 55 F water as zero capacity incorrectly prevented a warm,
+        circulating loop from absorbing any building heat.
+        """
         if self._flow_common < self.params.minimum_usable_flow_gpm:
             return 0.0
-        temperature_span = (
-            self.params.unusable_supply_temp_f - self.params.full_capacity_supply_temp_f
-        )
-        temperature_factor = max(
-            0.0,
-            min(
-                1.0,
-                (self.params.unusable_supply_temp_f - self._chws_common)
-                / max(temperature_span, 0.1),
-            ),
-        )
         # One design-flow circuit is sufficient to serve the only AHU coil.
         # Additional pumps/chillers add plant capacity and redundancy rather
         # than making a single downstream coil exceed 100% availability.
@@ -101,13 +111,42 @@ class ChwPlantManagerModel(EquipmentModel):
             0.0,
             min(1.0, self._flow_common / max(design_flow, 1.0)),
         )
-        return temperature_factor * flow_factor
+        return flow_factor
 
     @property
     def cooling_load_btuh(self) -> float:
+        """Positive air-side heat transferred into chilled water."""
         return sum(
             max(0.0, float(getattr(coil, "cooling_coil_load_btuh", 0.0)))
             for coil in self._cooling_coils
+        )
+
+    @property
+    def loop_ambient_temp_f(self) -> float:
+        building_temperatures = [
+            float(getattr(coil, "return_air_temp_f"))
+            for coil in self._cooling_coils
+            if hasattr(coil, "return_air_temp_f")
+        ]
+        building_temp = (
+            sum(building_temperatures) / len(building_temperatures)
+            if building_temperatures
+            else 72.0
+        )
+        outdoor_temp = building_temp
+        if self.site_registry is not None:
+            try:
+                outdoor_temp = float(self.site_registry.get("oa_temp"))
+            except KeyError:
+                pass
+        outdoor_fraction = max(
+            0.0,
+            min(1.0, self.params.outdoor_ambient_fraction),
+        )
+        return (
+            (1.0 - outdoor_fraction) * building_temp
+            + outdoor_fraction * outdoor_temp
+            + self.params.mechanical_room_temp_offset_f
         )
 
     @property
@@ -133,6 +172,12 @@ class ChwPlantManagerModel(EquipmentModel):
             "flow_gpm": round(self.flow_gpm, 2),
             "cooling_load_btuh": round(self.cooling_load_btuh, 1),
             "nominal_capacity_btuh": round(self.nominal_capacity_btuh, 1),
+            "loop_mean_temp_f": round(self._loop_mean_temp_f, 2),
+            "loop_ambient_temp_f": round(self.loop_ambient_temp_f, 2),
+            "coil_heat_btuh": round(self._coil_heat_btuh, 1),
+            "pump_heat_btuh": round(self._pump_heat_btuh, 1),
+            "ambient_heat_btuh": round(self._ambient_heat_btuh, 1),
+            "refrigeration_btuh": round(self._refrigeration_btuh, 1),
         }
 
     def tick(self, dt_seconds: float) -> None:
@@ -146,22 +191,62 @@ class ChwPlantManagerModel(EquipmentModel):
         ]
         pumping = len(distribution_units)
         target_flow = pumping * self.params.design_flow_per_chiller_gpm
-        if distribution_units:
-            # Connected evaporators mix by water mass flow.  The present
-            # fixed-speed units have equal design flow, so this is an equal
-            # weighted mean rather than the old nonphysical coldest-unit min.
-            target_chws = sum(c.chws_temp_f for c in distribution_units) / pumping
-            return_rise = self.cooling_load_btuh / max(
-                500.0 * target_flow,
-                1.0,
+
+        # Whole-loop first-law balance.  AHU heat, pump work, and ambient
+        # piping/mechanical-room gains add energy; proven compressors remove
+        # it.  The finite water inventory makes temperatures coast and pull
+        # down over realistic minutes/hours instead of snapping to 54-55 F.
+        self._coil_heat_btuh = self.cooling_load_btuh if target_flow > 0.0 else 0.0
+        self._pump_heat_btuh = (
+            pumping * self.params.pump_heat_btuh_per_running_pump
+        )
+        self._ambient_heat_btuh = self.params.loop_ambient_ua_btuh_per_f * (
+            self.loop_ambient_temp_f - self._loop_mean_temp_f
+        )
+        self._refrigeration_btuh = sum(
+            max(0.0, chiller.evaporator_heat_removed_btuh)
+            for chiller in distribution_units
+        )
+        net_heat_btuh = (
+            self._coil_heat_btuh
+            + self._pump_heat_btuh
+            + self._ambient_heat_btuh
+            - self._refrigeration_btuh
+        )
+        loop_heat_capacity = max(
+            1.0,
+            self.params.loop_volume_gallons
+            * self.params.water_heat_capacity_btuper_gallon_f,
+        )
+        self._loop_mean_temp_f += (
+            net_heat_btuh * max(0.0, dt_seconds) / 3600.0 / loop_heat_capacity
+        )
+        self._loop_mean_temp_f = max(
+            self.params.minimum_loop_temp_f,
+            min(self.params.maximum_loop_temp_f, self._loop_mean_temp_f),
+        )
+
+        if target_flow > 0.0:
+            # Heat picked up between the common supply and return sensors.
+            # Pump work changes the mean temperature; the pump is treated as
+            # plant-side of the common supply sensor, so it is not double
+            # counted as AHU/distribution delta-T.
+            load_side_heat_btuh = (
+                self._coil_heat_btuh + self._ambient_heat_btuh
             )
-            target_chwr = target_chws + min(
-                self.params.maximum_header_return_rise_f,
-                max(0.0, return_rise),
+            return_rise = load_side_heat_btuh / max(500.0 * target_flow, 1.0)
+            return_rise = max(
+                -self.params.maximum_header_return_rise_f,
+                min(self.params.maximum_header_return_rise_f, return_rise),
             )
+            target_chws = self._loop_mean_temp_f - 0.5 * return_rise
+            target_chwr = self._loop_mean_temp_f + 0.5 * return_rise
         else:
-            target_chws = self.params.idle_header_temp_f
-            target_chwr = self.params.idle_header_temp_f
+            # Stagnant headers share the loop mean.  They may match each other,
+            # but they continue drifting toward actual ambient rather than a
+            # fabricated chilled-water temperature.
+            target_chws = self._loop_mean_temp_f
+            target_chwr = self._loop_mean_temp_f
 
         tc = self.params.header_time_constant_seconds
         self._chws_common = self.approach(self._chws_common, target_chws, dt_seconds, tc)

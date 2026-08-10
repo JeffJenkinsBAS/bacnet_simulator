@@ -141,6 +141,45 @@ async def test_ahu_cooling_valve_requires_usable_chilled_water() -> None:
     assert ahu.conditioning_source == "mechanical-cooling"
 
 
+async def test_warm_circulating_chw_still_absorbs_airside_heat() -> None:
+    registry = PointRegistry([_group("site.json"), _group("ahu_1.json")])
+    registry.build_objects()
+    registry._set("ACI-SIM-SITE.oa_temp", 80.0)
+    chw = MutableChwPlant()
+    chw.cooling_capacity_fraction = 1.0
+    chw.supply_temp_f = 55.0
+    ahu = AhuModel(
+        "ACI-SIM-AHU-1",
+        registry.view("ACI-SIM-AHU-1"),
+        registry.view("ACI-SIM-SITE"),
+        parameters=AhuParameters(coil_time_constant_seconds=20.0),
+        chw_plant_model=chw,
+    )
+    ahu.set_vav_models(
+        [
+            SimpleNamespace(
+                return_air_temp_f=74.0,
+                return_air_humidity_ratio=0.008,
+                return_airflow_cfm=1000.0,
+                design_max_airflow_cfm=1000.0,
+                damper_position_feedback_pct=100.0,
+                params=SimpleNamespace(floor_area_sqft=1000.0),
+            )
+        ]
+    )
+    await _write(registry, "ACI-SIM-AHU-1", "sa_fan_ss", True)
+    await _write(registry, "ACI-SIM-AHU-1", "cooling_valve", 100.0)
+
+    for _ in range(180):
+        ahu.tick(1.0)
+
+    snapshot = ahu.operating_snapshot()
+    assert ahu.cooling_coil_load_btuh > 10_000.0
+    assert snapshot["supply_air_temp_f"] < snapshot["mixed_air_temp_f"] - 8.0
+    assert snapshot["supply_air_temp_f"] > chw.supply_temp_f
+    assert snapshot["conditioning_source"] == "mechanical-cooling"
+
+
 async def test_ahu_sat_setpoint_does_not_bypass_webctrl_valve_commands() -> None:
     registry = PointRegistry([_group("site.json"), _group("ahu_1.json")])
     registry.build_objects()

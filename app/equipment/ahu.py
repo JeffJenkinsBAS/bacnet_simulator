@@ -67,7 +67,11 @@ class AhuParameters:
     economizer_cooling_benefit_deadband_f: float = 1.0
     economizer_integrated_proof_seconds: float = 180.0
     preheat_leaving_temp_f: float = 55.0
-    cooling_coil_approach_f: float = 10.0
+    # At design flow, a wet six-row coil typically transfers roughly 75% of
+    # the entering-air-to-entering-water temperature difference.  Using an
+    # effectiveness relation (rather than a hard CHWS+approach floor) lets
+    # 55-70 F water still absorb sensible heat when it is colder than the air.
+    cooling_coil_design_effectiveness: float = 0.75
     # A characterized/equal-percentage hydronic valve offsets the convex
     # coil curve so installed heat output is approximately linear with the
     # actuator command. 20.5 F of design rise makes a 50% valve command
@@ -329,6 +333,16 @@ class AhuModel(EquipmentModel):
     @property
     def cooling_coil_chwr_temp_f(self) -> float:
         return self._cooling_coil_chwr_temp_f
+
+    @property
+    def cooling_coil_water_heat_btuh(self) -> float:
+        """Signed heat entering CHW; positive means the building warms water."""
+        return self._cooling_coil_load_btuh
+
+    @property
+    def return_air_temp_f(self) -> float:
+        """Common return-air temperature used as the plant-room ambient proxy."""
+        return self._ra_temp
 
     @property
     def cooling_capacity_fraction(self) -> float:
@@ -2066,12 +2080,13 @@ class AhuModel(EquipmentModel):
 
             cooling_output = self._cooling_valve_fraction * cooling_capacity
             if cooling_output > 0.0:
-                coil_floor = chw_temp + self.params.cooling_coil_approach_f
-                if target_sa > coil_floor:
+                if target_sa > chw_temp:
                     coil_enter_temp = target_sa
                     coil_enter_ratio = target_supply_humidity_ratio
                     ideal_coil_leaving_temp = target_sa - (
-                        cooling_output * (target_sa - coil_floor)
+                        cooling_output
+                        * self.params.cooling_coil_design_effectiveness
+                        * (target_sa - chw_temp)
                     )
                     ideal_coil_leaving_ratio = coil_enter_ratio
                     if ideal_coil_leaving_temp < coil_enter_temp - 1.0:

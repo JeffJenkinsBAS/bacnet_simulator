@@ -265,7 +265,10 @@ async def test_plant_manager_mirrors_proof_and_moves_common_header():
     assert plant_view.get("chiller1_ok") == 1.0, "manager must mirror chiller 1's proof"
     assert plant_view.get("chiller2_ok") == 0.0, "chiller 2 was never commanded"
     header = plant_view.get("chws_temp_common")
-    assert header < 48.0, f"common header {header:.1f}F should track the proven chiller toward setpoint"
+    assert 44.0 < header < 60.0, (
+        f"common header {header:.1f}F should be pulling the finite loop inventory "
+        "down from its 70F idle temperature toward setpoint"
+    )
     assert plant_view.get("chws_flow_common") > 0.0, "flow header must reflect the running CHW pump"
 
 
