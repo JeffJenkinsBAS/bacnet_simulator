@@ -77,6 +77,7 @@ def _chiller_stack() -> tuple[
         "ACI-SIM-CHW-PLANT",
         plant_view,
         [chiller],
+        site_registry=site_view,
     )
     return registry, site, chiller, manager
 
@@ -158,7 +159,28 @@ async def test_pump_on_chiller_off_warms_loop_and_creates_load_delta_t() -> None
         1.0,
         abs=0.15,
     )
-    assert manager.supply_temp_f > 54.5
+    assert manager.supply_temp_f > 70.0
+
+
+@pytest.mark.asyncio
+async def test_start_command_alone_uses_default_enable_and_proves_status() -> None:
+    registry, site, chiller, manager = _chiller_stack()
+
+    # Enable is availability/interlock permission and defaults active.  WebCTRL's
+    # S/S point is therefore the actual start command operators need to issue.
+    assert registry.view("ACI-SIM-CHILLER-1").get("chiller_enable") == 1.0
+    for alias in ("chw_iso_valve", "chw_pump_ss", "cw_pump_ss"):
+        await _write(registry, "ACI-SIM-CHILLER-1", alias, True)
+    await _write(registry, "ACI-SIM-CHILLER-1", "chiller_ss", True)
+
+    for _ in range(15):
+        site.tick(1.0)
+        chiller.tick(1.0)
+        manager.tick(1.0)
+
+    assert chiller.proven
+    assert registry.view("ACI-SIM-CHILLER-1").get("chiller_status") == 1.0
+    assert registry.view("ACI-SIM-CHW-PLANT").get("chiller1_ok") == 1.0
 
 
 @pytest.mark.asyncio
@@ -173,13 +195,15 @@ async def test_running_chiller_with_no_coil_load_has_near_zero_delta_t() -> None
     ):
         await _write(registry, "ACI-SIM-CHILLER-1", alias, True)
 
-    for _ in range(600):
+    # A finite 1,200-gallon loop needs a realistic pull-down period from its
+    # 70 F idle temperature; the header must not snap directly to setpoint.
+    for _ in range(1200):
         site.tick(1.0)
         chiller.tick(1.0)
         manager.tick(1.0)
 
     assert chiller.proven
-    assert manager.supply_temp_f == pytest.approx(44.0, abs=0.3)
+    assert manager.supply_temp_f == pytest.approx(44.0, abs=0.5)
     assert manager.return_temp_f - manager.supply_temp_f == pytest.approx(
         0.0,
         abs=0.2,

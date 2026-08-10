@@ -32,7 +32,7 @@ class ChillerParameters:
     chws_time_constant_seconds: float = 45.0
     chwr_rise_when_loaded_f: float = 10.0
     design_chw_flow_gpm: float = 300.0
-    idle_evaporator_temp_f: float = 55.0
+    idle_evaporator_temp_f: float = 70.0
     pump_start_delay_seconds: float = 3.0
     isolation_valve_time_constant_seconds: float = 4.0
     tower_fan_start_delay_seconds: float = 5.0
@@ -59,9 +59,9 @@ class ChillerModel(EquipmentModel):
 
         self._enabled_seconds = 0.0
         self._proven = False
-        self._chws_temp = 55.0
-        self._chwr_temp = 55.0
-        self._evaporator_inlet_temp_f = 55.0
+        self._chws_temp = self.params.idle_evaporator_temp_f
+        self._chwr_temp = self.params.idle_evaporator_temp_f
+        self._evaporator_inlet_temp_f = self.params.idle_evaporator_temp_f
         self._evaporator_flow_gpm = 0.0
         self._evaporator_heat_removed_btuh = 0.0
         self._cws_temp = 75.0
@@ -220,8 +220,11 @@ class ChillerModel(EquipmentModel):
                 target_chws = target_chwr
         else:
             removed_btuh = 0.0
-            target_chws = self.params.idle_evaporator_temp_f
-            target_chwr = self.params.idle_evaporator_temp_f
+            # A stopped primary pump isolates this barrel from forced flow,
+            # but it still shares the plant's slowly changing water/ambient
+            # state.  Do not pin an idle evaporator to an artificial 55 F.
+            target_chws = self._evaporator_inlet_temp_f
+            target_chwr = self._evaporator_inlet_temp_f
 
         self._chws_temp = self.approach(
             self._chws_temp,

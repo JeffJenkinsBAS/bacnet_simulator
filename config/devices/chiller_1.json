@@ -14,8 +14,9 @@
       "signal_direction": "webctrl_to_sim",
       "writable": true,
       "commandable": true,
-      "initial_value": 0,
-      "update_interval_seconds": 1
+      "initial_value": 1,
+      "update_interval_seconds": 1,
+      "relinquish_default": 1
     },
     {
       "alias": "chiller_ss",

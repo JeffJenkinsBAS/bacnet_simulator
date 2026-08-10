@@ -159,17 +159,31 @@ class PointRegistry:
             )
 
         if point.object_type == ObjectType.binary_output:
+            binary_default = (
+                point.relinquish_default
+                if point.relinquish_default is not None
+                else 0.0
+            )
             return BinaryOutputObject(
                 presentValue="active" if point.initial_value else "inactive",
-                relinquishDefault="inactive",
+                relinquishDefault=(
+                    "active" if binary_default else "inactive"
+                ),
                 **common_kwargs,
             )
 
         if point.object_type == ObjectType.binary_value:
             if point.commandable:
+                binary_default = (
+                    point.relinquish_default
+                    if point.relinquish_default is not None
+                    else 0.0
+                )
                 return BinaryValueObjectCmd(
                     presentValue="active" if point.initial_value else "inactive",
-                    relinquishDefault="inactive",
+                    relinquishDefault=(
+                        "active" if binary_default else "inactive"
+                    ),
                     **common_kwargs,
                 )
             return BinaryValueObject(
