@@ -15,6 +15,7 @@ from __future__ import annotations
 import collections
 import logging
 import logging.handlers
+import os
 from pathlib import Path
 
 LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
@@ -34,13 +35,27 @@ class _RingBufferHandler(logging.Handler):
         self._buffer.append(self.format(record))
 
 
-def configure_logging() -> None:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+def _close_handlers(logger: logging.Logger) -> None:
+    """Remove and close prior handlers so reloads do not duplicate output."""
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
+
+
+def configure_logging(log_dir: Path | None = None) -> None:
+    """Configure application logging.
+
+    ``log_dir`` is injectable so tests and diagnostics do not contend with
+    the Windows service's open log handles.
+    """
+    configured_dir = os.environ.get("ACI_LOG_DIR")
+    target_dir = log_dir or (Path(configured_dir) if configured_dir else LOG_DIR)
+    target_dir.mkdir(parents=True, exist_ok=True)
     fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
     root = logging.getLogger("aci_sim")
     root.setLevel(logging.DEBUG)
-    root.handlers.clear()
+    _close_handlers(root)
 
     console = logging.StreamHandler()
     console.setLevel(logging.INFO)
@@ -48,7 +63,7 @@ def configure_logging() -> None:
     root.addHandler(console)
 
     app_file = logging.handlers.RotatingFileHandler(
-        LOG_DIR / "aci_sim.log", maxBytes=5_000_000, backupCount=3
+        target_dir / "aci_sim.log", maxBytes=5_000_000, backupCount=3
     )
     app_file.setLevel(logging.DEBUG)
     app_file.setFormatter(fmt)
@@ -64,9 +79,10 @@ def configure_logging() -> None:
     traffic_logger = logging.getLogger("aci_sim.bacnet_traffic")
     traffic_logger.setLevel(logging.DEBUG)
     traffic_logger.propagate = False
+    _close_handlers(traffic_logger)
 
     traffic_file = logging.handlers.RotatingFileHandler(
-        LOG_DIR / "bacnet_traffic.log", maxBytes=5_000_000, backupCount=3
+        target_dir / "bacnet_traffic.log", maxBytes=5_000_000, backupCount=3
     )
     traffic_file.setFormatter(fmt)
     traffic_logger.addHandler(traffic_file)

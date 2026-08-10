@@ -1,7 +1,8 @@
 {
   "group_id": "ACI-SIM-SITE",
   "instance_offset": 0,
-  "description": "Outside air conditions, instructor/scenario-adjustable for seasonal training.",
+  "description": "Outside air and whole-building pressure conditions.",
+  "model_parameters": {},
   "points": [
     {
       "alias": "oa_temp",
@@ -34,6 +35,25 @@
       "maximum": 100.0,
       "update_interval_seconds": 1,
       "cov_increment": 1.0
+    },
+    {
+      "alias": "building_pressure",
+      "object_type": "analog-input",
+      "object_instance": 82,
+      "object_name": "SITE Building Pressure",
+      "description": "Simulated indoor-to-outdoor building pressure driven by AHU supply and EF-1 exhaust trim",
+      "units": "inches-of-water",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "initial_value": 0.0,
+      "minimum": -0.25,
+      "maximum": 0.25,
+      "update_interval_seconds": 1,
+      "cov_increment": 0.005,
+      "normal_range": {
+        "low": 0.03,
+        "high": 0.1
+      }
     }
   ]
 }

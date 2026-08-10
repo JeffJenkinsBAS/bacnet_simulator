@@ -2,6 +2,7 @@
   "group_id": "ACI-SIM-CHW-PLANT",
   "instance_offset": 1000,
   "description": "Chiller Manager's plant-level status/common-header points, plus Emerg/Refrig Shutdown hard interlocks.",
+  "model_parameters": {},
   "points": [
     {
       "alias": "ch1_power_loss",
@@ -105,7 +106,7 @@
       "writable": false,
       "initial_value": 0.0,
       "minimum": 0.0,
-      "maximum": 500.0,
+      "maximum": 1000.0,
       "update_interval_seconds": 1,
       "cov_increment": 2.0
     },

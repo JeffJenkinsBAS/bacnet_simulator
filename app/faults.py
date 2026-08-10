@@ -57,6 +57,7 @@ class FaultType(str, Enum):
     stuck_value = "stuck_value"                    # output OR input: pinned at parameters["value"] (or captured value if none given)
     reversed_actuator = "reversed_actuator"          # input: 100 - commanded (0-100% points only)
     forced_status = "forced_status"                    # output: boolean forced to parameters["value"]
+    safety_bypass = "safety_bypass"                    # AHU-only: deliberately defeat one automatic safety
     device_offline = "device_offline"                    # transport: stop responding entirely
     slow_response = "slow_response"                        # transport: add parameters["delay_seconds"] before responding
     write_rejected = "write_rejected"                        # transport: reject all writes regardless of source
@@ -106,6 +107,22 @@ class FaultManager:
         alias: Optional[str],
         parameters: Optional[dict[str, Any]] = None,
     ) -> FaultInstance:
+        if (
+            fault_type == FaultType.safety_bypass
+            and (
+                group_id != "ACI-SIM-AHU-1"
+                or alias
+                not in {
+                    "automatic_high_static_trip",
+                    "automatic_freezestat_trip",
+                }
+            )
+        ):
+            raise ValueError(
+                "safety_bypass is valid only for "
+                "ACI-SIM-AHU-1.automatic_high_static_trip or "
+                "ACI-SIM-AHU-1.automatic_freezestat_trip"
+            )
         instance = FaultInstance(
             fault_id=fault_id,
             fault_type=fault_type,
@@ -161,6 +178,18 @@ class FaultManager:
     def has_point_fault(self, group_id: str, alias: str, fault_type: FaultType) -> bool:
         """True if a fault of the given type is active on this exact point."""
         return any(f.fault_type == fault_type for f in self._matching(group_id, alias))
+
+    def point_fault_parameters(
+        self,
+        group_id: str,
+        alias: str,
+        fault_type: FaultType,
+    ) -> Optional[dict[str, Any]]:
+        """Return a copy of the first active matching point-fault parameters."""
+        for fault in self._matching(group_id, alias):
+            if fault.fault_type == fault_type:
+                return dict(fault.parameters)
+        return None
 
     def apply_to_output(self, group_id: str, alias: str, value: float) -> float:
         """Called from GroupView.set() -- the simulator publishing a sim->WebCTRL value."""

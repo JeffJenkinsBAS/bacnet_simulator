@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.config_models import NetworkConfig, SupervisoryDeviceConfig
+from app.config_models import NetworkConfig, PointConfig, SupervisoryDeviceConfig
 from app.registry import PointRegistry
 from tests.test_bacnet_integration import _load_group_config, running_transport
 
@@ -54,3 +54,34 @@ async def test_invalid_bacnet_configuration_is_rejected():
         NetworkConfig(bind_address="0.0.0.0")
     with pytest.raises(ValidationError):
         NetworkConfig(bind_address="127.0.0.1", udp_port=70000)
+    with pytest.raises(ValidationError):
+        NetworkConfig(bind_address="127.0.0.1", peer_allowlist=["not-an-ip"])
+    with pytest.raises(ValidationError):
+        NetworkConfig(
+            bind_address="127.0.0.1",
+            peer_allowlist=["192.168.168.2", "192.168.168.2"],
+        )
+    with pytest.raises(ValidationError):
+        NetworkConfig(
+            bind_address="127.0.0.1",
+            peer_allowlist=["192.168.168.2"],
+            write_source_allowlist=["192.168.168.3"],
+        )
+    with pytest.raises(ValidationError):
+        NetworkConfig(bind_address="192.168.168.201")
+    with pytest.raises(ValidationError):
+        NetworkConfig(
+            bind_address="127.0.0.1",
+            peer_allowlist=[],
+            misspelled_allowlist=["127.0.0.1"],
+        )
+    with pytest.raises(ValidationError):
+        PointConfig(
+            alias="bad_range",
+            object_type="analog-input",
+            object_instance=1,
+            object_name="Bad Range",
+            signal_direction="sim_to_webctrl",
+            minimum=100,
+            maximum=0,
+        )

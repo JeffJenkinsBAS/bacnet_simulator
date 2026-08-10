@@ -31,6 +31,22 @@
       "alias": "boiler_ss",
       "value": true,
       "description": "Boiler-2 start/stop commanded on"
+    },
+    {
+      "time_seconds": 30,
+      "action": "set_value",
+      "equipment": "ACI-SIM-BOILER-2",
+      "alias": "circ_pump_ss",
+      "value": true,
+      "description": "Start Boiler-2's required circulator so ignition has valid flow"
+    },
+    {
+      "time_seconds": 30,
+      "action": "set_value",
+      "equipment": "ACI-SIM-BOILER-2",
+      "alias": "hw_pump_ss",
+      "value": true,
+      "description": "Start the building hot-water distribution pump"
     }
   ],
   "expected_results": [

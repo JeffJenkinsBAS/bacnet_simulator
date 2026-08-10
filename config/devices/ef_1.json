@@ -2,6 +2,7 @@
   "group_id": "ACI-SIM-EF-1",
   "instance_offset": 10000,
   "description": "Simulated exhaust fan.",
+  "model_parameters": {},
   "points": [
     {
       "alias": "exh_air_damper",
@@ -18,6 +19,22 @@
       "maximum": 100.0,
       "update_interval_seconds": 1,
       "relinquish_default": 0.0
+    },
+    {
+      "alias": "vfd_speed_command",
+      "object_type": "analog-output",
+      "object_instance": 21,
+      "object_name": "EF-1 VFD Speed Command",
+      "description": "WebCTRL exhaust-fan VFD speed command used to trim occupied building pressure",
+      "units": "percent",
+      "signal_direction": "webctrl_to_sim",
+      "writable": true,
+      "commandable": true,
+      "initial_value": 35.0,
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "update_interval_seconds": 1,
+      "relinquish_default": 35.0
     },
     {
       "alias": "exh_fan_ss",

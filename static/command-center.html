@@ -1,0 +1,898 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>ACI BACnet Digital Twin</title>
+  <link rel="stylesheet" href="/static/vendor/fontawesome/css/fontawesome.min.css">
+  <link rel="stylesheet" href="/static/vendor/fontawesome/css/solid.min.css">
+  <link rel="stylesheet" href="/static/styles.css?v=20260724-ahu-command-center">
+  <script src="/static/app.js?v=20260724-ahu-command-center-r2" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <a class="brand" href="#digital-twin" aria-label="ACI BACnet Digital Twin home">
+        <img src="/static/logo.png" alt="">
+        <span class="brand-copy">
+          <strong>ACI COMMAND</strong>
+          <small>BACNET SIM STATION</small>
+        </span>
+      </a>
+
+      <nav class="primary-nav" aria-label="Simulator views">
+        <button class="nav-button is-active" type="button" data-view="twin" aria-label="Digital Twin" aria-controls="view-twin" aria-current="page">
+          <i class="fa-solid fa-building" aria-hidden="true"></i>
+          <span>Digital Twin</span>
+        </button>
+        <button class="nav-button" type="button" data-view="duct-static" aria-label="AHU-1 Command Center" aria-controls="view-duct-static">
+          <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
+          <span>AHU-1 Command</span>
+        </button>
+        <button class="nav-button" type="button" data-view="equipment" aria-label="Equipment" aria-controls="view-equipment">
+          <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+          <span>Equipment</span>
+        </button>
+        <button class="nav-button" type="button" data-view="operations" aria-label="Operations" aria-controls="view-operations">
+          <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+          <span>Operations</span>
+          <span class="nav-count" id="nav-fault-count" hidden>0</span>
+        </button>
+        <button class="nav-button" type="button" data-view="ai" aria-label="AI Console" aria-controls="view-ai">
+          <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+          <span>AI Console</span>
+        </button>
+        <button class="nav-button" type="button" data-view="logs" aria-label="Logs" aria-controls="view-logs">
+          <i class="fa-solid fa-terminal" aria-hidden="true"></i>
+          <span>Logs</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-status">
+        <div class="side-link-state">
+          <span class="status-dot" id="side-status-dot" aria-hidden="true"></span>
+          <span class="sidebar-status-copy">
+            <strong id="side-link-label">CONNECTING</strong>
+            <small>REST :8001</small>
+          </span>
+        </div>
+        <div class="side-device">
+          <span class="sidebar-status-copy">
+            <small>DEVICE</small>
+            <strong id="side-device-instance">&mdash;</strong>
+          </span>
+        </div>
+      </div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <div class="topbar-title">
+          <span class="eyebrow">ACI BUILDING SIMULATION</span>
+          <h1 id="view-title">Digital Twin Command Center</h1>
+        </div>
+        <div class="topbar-readouts">
+          <div class="topbar-readout">
+            <span>LAST SYNC</span>
+            <strong id="last-sync">WAITING</strong>
+          </div>
+          <div class="topbar-readout topbar-clock">
+            <span>LOCAL</span>
+            <strong id="local-clock">--:--:--</strong>
+          </div>
+        </div>
+        <button class="button button-secondary restart-simulation" id="restart-simulation" type="button" aria-label="Restart simulation and refresh BACnet link" title="Restart simulation and refresh BACnet link">
+          <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+          <span>RESTART</span>
+        </button>
+        <button class="button button-danger stop-all" id="stop-all" type="button" aria-label="Stop all simulation" title="Stop all simulation">
+          <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          <span>STOP ALL</span>
+        </button>
+      </header>
+
+      <div class="stale-banner" id="stale-banner" role="alert" hidden>
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+        <span id="stale-message">Live telemetry is unavailable.</span>
+      </div>
+
+      <main class="main-content">
+        <section class="view" id="view-twin" data-view-panel="twin" aria-labelledby="twin-heading">
+          <div class="view-heading command-heading">
+            <div>
+              <span class="eyebrow">LIVE BUILDING MODEL</span>
+              <h2 id="twin-heading">Digital Twin</h2>
+              <p id="building-name">ACI Training Facility</p>
+            </div>
+            <div class="command-actions">
+              <button class="button button-secondary" id="engine-control" type="button">
+                <i class="fa-solid fa-power-off" aria-hidden="true"></i>
+                <span>Engine</span>
+              </button>
+              <label class="compact-field" for="speed-control">
+                <span>TIME RATE</span>
+                <select id="speed-control" aria-label="Simulation time rate">
+                  <option value="1">1&times;</option>
+                  <option value="2">2&times;</option>
+                  <option value="5">5&times;</option>
+                  <option value="10">10&times;</option>
+                  <option value="30">30&times;</option>
+                  <option value="60">60&times;</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          <div class="metric-grid" aria-label="Building telemetry summary">
+            <article class="metric-card metric-primary">
+              <div class="metric-icon"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i></div>
+              <div>
+                <span>BUILDING PRESSURE</span>
+                <strong id="metric-pressure">&mdash;</strong>
+                <small id="metric-pressure-state">Awaiting command center</small>
+              </div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-icon"><i class="fa-solid fa-temperature-half" aria-hidden="true"></i></div>
+              <div>
+                <span>OUTDOOR AIR</span>
+                <strong id="metric-oa-temp">&mdash;</strong>
+                <small id="metric-oa-humidity">Humidity &mdash;</small>
+              </div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-icon"><i class="fa-solid fa-fan" aria-hidden="true"></i></div>
+              <div>
+                <span>RUNNING SYSTEMS</span>
+                <strong id="metric-running">0</strong>
+                <small id="metric-tracking">0 tracking / 0 starting</small>
+              </div>
+            </article>
+            <article class="metric-card">
+              <div class="metric-icon"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></div>
+              <div>
+                <span>ACTIVE FAILURES</span>
+                <strong id="metric-failures">0</strong>
+                <small id="metric-faults">0 injected faults</small>
+              </div>
+            </article>
+          </div>
+
+          <div class="twin-layout">
+            <article class="panel twin-panel">
+              <div class="panel-toolbar">
+                <div class="floor-filters" role="group" aria-label="Filter digital twin by floor">
+                  <button class="filter-button is-active" type="button" data-floor="all" aria-pressed="true">ALL</button>
+                  <button class="filter-button" type="button" data-floor="roof" aria-pressed="false">ROOF</button>
+                  <button class="filter-button" type="button" data-floor="level-3" aria-pressed="false">LEVEL 3</button>
+                  <button class="filter-button" type="button" data-floor="level-2" aria-pressed="false">LEVEL 2</button>
+                  <button class="filter-button" type="button" data-floor="level-1" aria-pressed="false">LEVEL 1</button>
+                  <button class="filter-button" type="button" data-floor="plant" aria-pressed="false">PLANT</button>
+                </div>
+                <div class="model-mode" id="model-mode">
+                  <span class="status-dot status-cyan" aria-hidden="true"></span>
+                  <span>LIVE MODEL</span>
+                </div>
+              </div>
+
+              <div class="building-stage" id="building-stage">
+                <img src="/static/assets/building-digital-twin.png" alt="Cutaway digital twin of the ACI training facility">
+                <div class="airflow-layer" id="airflow-layer" aria-hidden="true"></div>
+                <div class="marker-layer" id="marker-layer" aria-label="Interactive equipment locations"></div>
+                <div class="stage-loading" id="stage-loading">
+                  <i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i>
+                  <span>Synchronizing building model</span>
+                </div>
+              </div>
+
+              <div class="stage-footer">
+                <div class="state-legend" aria-label="Equipment state legend">
+                  <span><i class="legend-dot legend-running" aria-hidden="true"></i>Running</span>
+                  <span><i class="legend-dot legend-tracking" aria-hidden="true"></i>Tracking</span>
+                  <span><i class="legend-dot legend-idle" aria-hidden="true"></i>Idle</span>
+                  <span><i class="legend-dot legend-failure" aria-hidden="true"></i>Failure</span>
+                  <span><i class="legend-dot legend-air-cooling" aria-hidden="true"></i>Cooling air</span>
+                  <span><i class="legend-dot legend-air-heating" aria-hidden="true"></i>Heating air</span>
+                  <span><i class="legend-dot legend-air-neutral" aria-hidden="true"></i>Ventilation</span>
+                </div>
+                <span id="location-count">0 locations</span>
+              </div>
+            </article>
+
+            <aside class="twin-side" aria-label="Digital twin inspector">
+              <article class="panel inspector" id="location-inspector">
+                <div class="panel-heading">
+                  <div>
+                    <span class="eyebrow">SELECTED LOCATION</span>
+                    <h3 id="inspector-title">Building Overview</h3>
+                  </div>
+                  <span class="state-pill state-idle" id="inspector-state">IDLE</span>
+                </div>
+                <p class="inspector-message" id="inspector-message">Select a marker to inspect live values and diagnostics.</p>
+                <dl class="telemetry-list" id="inspector-values"></dl>
+                <div class="diagnostic-block" id="diagnostic-block" hidden>
+                  <span>DIAGNOSTIC</span>
+                  <strong id="diagnostic-title">&mdash;</strong>
+                  <p id="diagnostic-message"></p>
+                  <div class="diagnostic-time">
+                    <span id="diagnostic-elapsed">0s mismatch</span>
+                    <span id="diagnostic-threshold">threshold &mdash;</span>
+                  </div>
+                </div>
+                <button class="button button-secondary button-full" id="inspect-equipment" type="button" disabled>
+                  <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i>
+                  <span>OPEN IN EQUIPMENT</span>
+                </button>
+              </article>
+
+              <article class="panel failure-panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="eyebrow">DIAGNOSTIC QUEUE</span>
+                    <h3>Failure List</h3>
+                  </div>
+                  <span class="panel-count" id="failure-count">0</span>
+                </div>
+                <div class="failure-list" id="failure-list">
+                  <div class="empty-state compact">
+                    <i class="fa-solid fa-shield-check" aria-hidden="true"></i>
+                    <span>No active failures</span>
+                  </div>
+                </div>
+              </article>
+            </aside>
+          </div>
+        </section>
+
+        <section class="view" id="view-duct-static" data-view-panel="duct-static" aria-labelledby="duct-static-heading" hidden>
+          <div class="view-heading pid-page-heading">
+            <div>
+              <span class="eyebrow">AHU-1 LIVE AIRSIDE TRAINING SYSTEM</span>
+              <h2 id="duct-static-heading">AHU-1 Command Center</h2>
+              <p>Inspect the complete air path, tune duct-static control, and observe safety-device response against live WebCTRL commands.</p>
+            </div>
+            <div class="pid-mode-card">
+              <span class="status-dot" id="pid-mode-dot" aria-hidden="true"></span>
+              <div>
+                <small id="pid-mode-caption">CONTROL MODE &middot; 1&times;</small>
+                <strong id="pid-mode-label">WAITING</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="ahu-alarm-summary state-idle" id="ahu-alarm-summary" role="status" aria-live="polite" aria-atomic="true">
+            <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+            <div>
+              <strong id="ahu-alarm-title">SAFETIES NORMAL</strong>
+              <span id="ahu-alarm-copy">Waiting for the live AHU safety snapshot.</span>
+            </div>
+            <button class="button button-secondary ahu-motion-toggle" id="ahu-motion-toggle" type="button" aria-pressed="false">
+              <i class="fa-solid fa-pause" aria-hidden="true"></i>
+              <span>PAUSE MOTION</span>
+            </button>
+          </div>
+
+          <div class="ahu-telemetry-state" id="ahu-telemetry-state" role="status" aria-live="polite" hidden>
+            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+            <span>AHU telemetry is unavailable. Values and motion are paused until the link recovers.</span>
+          </div>
+
+          <div class="pid-metric-grid" aria-label="AHU-1 operating summary">
+            <article class="metric-card pid-metric">
+              <div class="metric-icon"><i class="fa-solid fa-toggle-on" aria-hidden="true"></i></div>
+              <div><span>RUN COMMAND</span><strong id="pid-run-command">OFF</strong><small>WebCTRL BO:9061</small></div>
+            </article>
+            <article class="metric-card pid-metric">
+              <div class="metric-icon"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></div>
+              <div><span>SA FAN STATUS</span><strong id="pid-fan-status">OFF</strong><small>Simulated BI:9042 proof</small></div>
+            </article>
+            <article class="metric-card pid-metric metric-primary">
+              <div class="metric-icon"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i></div>
+              <div><span>DUCT STATIC</span><strong id="pid-static-actual">0.000</strong><small>in. H<sub>2</sub>O actual</small></div>
+            </article>
+            <article class="metric-card pid-metric">
+              <div class="metric-icon"><i class="fa-solid fa-bullseye" aria-hidden="true"></i></div>
+              <div><span>STATIC SETPOINT</span><strong id="pid-static-setpoint">1.000</strong><small>in. H<sub>2</sub>O from WebCTRL</small></div>
+            </article>
+            <article class="metric-card pid-metric">
+              <div class="metric-icon"><i class="fa-solid fa-fan" aria-hidden="true"></i></div>
+              <div><span>SA FAN / VFD</span><strong id="pid-fan-speed">0.0% &middot; 0.0 Hz</strong><small id="pid-output-copy">PID signal 0.0% &middot; Drive minimum 20 Hz</small></div>
+            </article>
+            <article class="metric-card pid-metric">
+              <div class="metric-icon"><i class="fa-solid fa-temperature-half" aria-hidden="true"></i></div>
+              <div><span>SUPPLY AIR</span><strong id="ahu-sa-temperature">--</strong><small id="ahu-sa-setpoint">Setpoint --</small></div>
+            </article>
+          </div>
+
+          <div class="ahu-command-layout">
+            <article class="panel ahu-hero-panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="eyebrow">INTERACTIVE AIR-HANDLING UNIT</span>
+                  <h3>AHU-1 Air Path</h3>
+                </div>
+                <span class="state-pill state-idle" id="pid-loop-state">LOOP OFF</span>
+              </div>
+
+              <div class="ahu-graphic-scroll" tabindex="0" aria-label="Scrollable AHU-1 equipment graphic">
+                <figure class="ahu-command-stage" id="ahu-command-stage" data-operating-mode="off" data-high-static-state="normal" data-freeze-state="normal" aria-labelledby="ahu-stage-caption">
+                  <img class="ahu-stage-image ahu-stage-base" src="/static/assets/ahu-1-command-center.png" alt="">
+                  <img class="ahu-stage-image ahu-stage-active ahu-active-economizer" id="ahu-economizer-active-layer" src="/static/assets/ahu-1-active-components.png" alt="">
+                  <img class="ahu-stage-image ahu-stage-active ahu-active-return" id="ahu-return-active-layer" src="/static/assets/ahu-1-active-components.png" alt="">
+                  <img class="ahu-stage-image ahu-stage-active ahu-active-preheat" id="ahu-preheat-active-layer" src="/static/assets/ahu-1-active-components.png" alt="">
+                  <img class="ahu-stage-image ahu-stage-active ahu-active-cooling" id="ahu-cooling-active-layer" src="/static/assets/ahu-1-active-components.png" alt="">
+                  <img class="ahu-stage-image ahu-stage-active ahu-active-reheat" id="ahu-reheat-active-layer" src="/static/assets/ahu-1-active-components.png" alt="">
+                  <img class="ahu-stage-image ahu-stage-active ahu-active-supply" id="ahu-supply-active-layer" src="/static/assets/ahu-1-active-components.png" alt="">
+                  <img class="ahu-stage-image ahu-stage-failure" id="ahu-duct-failure-layer" src="/static/assets/ahu-1-duct-failure.png" alt="">
+                  <img class="ahu-stage-image ahu-stage-flood" id="ahu-coil-burst-layer" src="/static/assets/ahu-1-coil-burst-flood.png" alt="">
+
+                  <button class="ahu-hotspot" type="button" data-ahu-component="outside-air" style="--hotspot-x: 3%; --hotspot-y: 48%;" aria-label="Inspect outside-air intake">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-wind" aria-hidden="true"></i></span><span class="ahu-hotspot-label">OA INTAKE</span>
+                  </button>
+                  <button class="ahu-hotspot" type="button" data-ahu-component="economizer" style="--hotspot-x: 8%; --hotspot-y: 58%;" aria-label="Inspect economizer damper">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-sliders" aria-hidden="true"></i></span><span class="ahu-hotspot-label" id="ahu-economizer-label">ECON 0%</span>
+                  </button>
+                  <button class="ahu-hotspot" type="button" data-ahu-component="prefilter" style="--hotspot-x: 18%; --hotspot-y: 54%;" aria-label="Inspect prefilter">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-filter" aria-hidden="true"></i></span><span class="ahu-hotspot-label">PREFILTER</span>
+                  </button>
+                  <button class="ahu-hotspot" type="button" data-ahu-component="return-sensors" style="--hotspot-x: 11%; --hotspot-y: 16%;" aria-label="Inspect return-air sensors and smoke detector">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-temperature-half" aria-hidden="true"></i></span><span class="ahu-hotspot-label" id="ahu-ra-label">RA --</span>
+                  </button>
+                  <button class="ahu-hotspot ahu-hotspot-fan" type="button" data-ahu-component="return-fan" style="--hotspot-x: 23%; --hotspot-y: 23%;" aria-label="Inspect return fan">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-fan" aria-hidden="true"></i></span><span class="ahu-hotspot-label" id="ahu-ra-fan-label">RA FAN OFF</span>
+                  </button>
+                  <button class="ahu-hotspot" type="button" data-ahu-component="mixed-air" style="--hotspot-x: 30%; --hotspot-y: 51%;" aria-label="Inspect mixed-air sensors">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-code-merge" aria-hidden="true"></i></span><span class="ahu-hotspot-label" id="ahu-ma-label">MA --</span>
+                  </button>
+                  <button class="ahu-hotspot ahu-hotspot-coil" type="button" data-ahu-component="preheat-coil" style="--hotspot-x: 37%; --hotspot-y: 63%;" aria-label="Inspect preheat coil">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-temperature-arrow-up" aria-hidden="true"></i></span><span class="ahu-hotspot-label" id="ahu-preheat-label">PREHEAT 0%</span>
+                  </button>
+                  <button class="ahu-hotspot ahu-hotspot-safety" type="button" data-ahu-component="freezestat" style="--hotspot-x: 42%; --hotspot-y: 40%;" aria-label="Inspect freezestat">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-snowflake" aria-hidden="true"></i></span><span class="ahu-hotspot-label" id="ahu-freezestat-label">FREEZESTAT</span>
+                  </button>
+                  <button class="ahu-hotspot ahu-hotspot-coil" type="button" data-ahu-component="cooling-coil" style="--hotspot-x: 46%; --hotspot-y: 52%;" aria-label="Inspect cooling coil">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-snowflake" aria-hidden="true"></i></span><span class="ahu-hotspot-label" id="ahu-cooling-label">COOLING 0%</span>
+                  </button>
+                  <button class="ahu-hotspot ahu-hotspot-coil" type="button" data-ahu-component="reheat-coil" style="--hotspot-x: 55%; --hotspot-y: 63%;" aria-label="Inspect reheat coil">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-fire-flame-simple" aria-hidden="true"></i></span><span class="ahu-hotspot-label" id="ahu-reheat-label">REHEAT 0%</span>
+                  </button>
+                  <button class="ahu-hotspot ahu-hotspot-fan" type="button" data-ahu-component="supply-fan" style="--hotspot-x: 65%; --hotspot-y: 55%;" aria-label="Inspect supply fan">
+                    <span class="ahu-hotspot-pin" id="pid-fan-graphic"><i class="fa-solid fa-fan" aria-hidden="true"></i></span><span class="ahu-hotspot-label" id="pid-graphic-speed">0.0% &middot; 0.0 Hz</span>
+                  </button>
+                  <button class="ahu-hotspot" type="button" data-ahu-component="supply-sensors" style="--hotspot-x: 76%; --hotspot-y: 44%;" aria-label="Inspect supply-air sensors and smoke detector">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-temperature-half" aria-hidden="true"></i></span><span class="ahu-hotspot-label" id="ahu-sa-label">SA --</span>
+                  </button>
+                  <button class="ahu-hotspot ahu-hotspot-safety" type="button" data-ahu-component="high-static" style="--hotspot-x: 81%; --hotspot-y: 58%;" aria-label="Inspect high-static safety switch">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></span><span class="ahu-hotspot-label" id="ahu-high-static-label">HIGH STATIC</span>
+                  </button>
+                  <button class="ahu-hotspot" type="button" data-ahu-component="duct-break" style="--hotspot-x: 87%; --hotspot-y: 46%;" aria-label="Inspect supply-duct break">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-bolt" aria-hidden="true"></i></span><span class="ahu-hotspot-label">DUCT BREAK</span>
+                  </button>
+                  <button class="ahu-hotspot" type="button" data-ahu-component="duct-static" style="--hotspot-x: 94%; --hotspot-y: 55%;" aria-label="Inspect two-thirds duct static sensor">
+                    <span class="ahu-hotspot-pin"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i></span><span class="ahu-hotspot-label"><span id="pid-sensor-bubble">0.000</span> in. H2O</span>
+                  </button>
+
+                  <figcaption class="visually-hidden" id="ahu-stage-caption">Interactive AHU-1 cutaway. Outside and return air mix before preheat, cooling, reheat, and supply-fan sections. Select a marker for live details. The 5.0-inch water-column structural limit is a representative training value for this simulator, not a universal duct rating.</figcaption>
+                </figure>
+              </div>
+
+              <div class="ahu-stage-footer">
+                <span><i class="fa-solid fa-arrow-right" aria-hidden="true"></i> Air path: outside/return air to mixed air, coils, supply fan, and VAV trunk</span>
+                <span id="pid-vav-bank-copy">17 terminals</span>
+              </div>
+
+              <section class="ahu-component-inspector" id="ahu-component-inspector" aria-live="polite">
+                <div>
+                  <span class="eyebrow">SELECTED COMPONENT</span>
+                  <h4 id="ahu-component-name">AHU-1 System</h4>
+                  <p id="ahu-component-description">Select a marker in the air-handler graphic to inspect its live command, proof, sensor, and safety values.</p>
+                </div>
+                <div class="ahu-component-values" id="ahu-component-values">
+                  <div><span>STATUS</span><strong id="ahu-component-status">WAITING</strong></div>
+                  <div><span>LIVE VALUE</span><strong id="ahu-component-primary">--</strong></div>
+                  <div><span>SUPPORTING</span><strong id="ahu-component-secondary">--</strong></div>
+                </div>
+              </section>
+            </article>
+
+            <aside class="ahu-safety-rail" aria-label="AHU safety and sensor status">
+              <article class="panel ahu-safety-card" id="ahu-high-static-card">
+                <div class="ahu-safety-heading">
+                  <i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
+                  <div><span>SUPPLY DUCT SAFETY</span><strong id="ahu-high-static-state">WAITING</strong></div>
+                </div>
+                <div class="ahu-pressure-track" aria-hidden="true"><span id="ahu-pressure-fill"></span><i class="ahu-pressure-trip"></i><i class="ahu-pressure-limit"></i></div>
+                <dl class="ahu-safety-values">
+                  <div><dt>Actual</dt><dd id="ahu-high-static-actual">0.000 in. H2O</dd></div>
+                  <div><dt>Trip threshold</dt><dd id="ahu-high-static-threshold">4.000 in. H2O</dd></div>
+                  <div><dt>Training duct limit</dt><dd id="ahu-duct-limit">5.000 in. H2O</dd></div>
+                  <div><dt>Safety path</dt><dd id="ahu-high-static-path">Monitoring</dd></div>
+                </dl>
+              </article>
+
+              <article class="panel ahu-economizer-card" id="ahu-economizer-card">
+                <div class="ahu-safety-heading">
+                  <i class="fa-solid fa-leaf" aria-hidden="true"></i>
+                  <div><span>AIRSIDE ECONOMIZER</span><strong id="ahu-economizer-state">WAITING</strong></div>
+                </div>
+                <div class="ahu-economizer-position" aria-label="Economizer requested and effective damper position">
+                  <div><span>REQUESTED</span><strong id="ahu-economizer-requested">0.0%</strong></div>
+                  <div><span>EFFECTIVE</span><strong id="ahu-economizer-effective">0.0%</strong></div>
+                </div>
+                <dl class="ahu-safety-values ahu-economizer-values">
+                  <div><dt>Suitability</dt><dd id="ahu-economizer-suitability">--</dd></div>
+                  <div><dt>Method</dt><dd id="ahu-economizer-method">--</dd></div>
+                  <div><dt>OA / RA enthalpy</dt><dd id="ahu-economizer-enthalpy">--</dd></div>
+                  <div><dt>Delta / OA dew point</dt><dd id="ahu-economizer-delta">--</dd></div>
+                  <div><dt>Mixed-air low limit</dt><dd id="ahu-economizer-low-limit">--</dd></div>
+                  <div><dt>Limiting reason</dt><dd id="ahu-economizer-limit-reason">--</dd></div>
+                  <div><dt>Full-open proof</dt><dd id="ahu-economizer-proof">0 seconds</dd></div>
+                </dl>
+                <div class="ahu-economizer-flags" id="ahu-economizer-flags">FDD NORMAL</div>
+              </article>
+
+              <article class="panel ahu-safety-card" id="ahu-freeze-card">
+                <div class="ahu-safety-heading">
+                  <i class="fa-solid fa-snowflake" aria-hidden="true"></i>
+                  <div><span>COIL FREEZE SAFETY</span><strong id="ahu-freeze-state">WAITING</strong></div>
+                </div>
+                <div class="ahu-freeze-progress" aria-hidden="true"><span id="ahu-freeze-fill"></span></div>
+                <dl class="ahu-safety-values">
+                  <div><dt>Coil entering air</dt><dd id="ahu-freeze-temp">--</dd></div>
+                  <div><dt>Exposure timer</dt><dd id="ahu-freeze-timer">0:00 / 20:00</dd></div>
+                  <div><dt>CHW flow</dt><dd id="ahu-chw-flow">NOT PROVEN</dd></div>
+                  <div><dt>Safety path</dt><dd id="ahu-freeze-path">Monitoring</dd></div>
+                </dl>
+              </article>
+
+              <article class="panel ahu-sensor-card">
+                <div class="panel-heading">
+                  <div><span class="eyebrow">AIR-PATH SENSORS</span><h3>Temperature &amp; Humidity</h3></div>
+                </div>
+                <dl class="ahu-sensor-list">
+                  <div><dt>Outside air</dt><dd><strong id="ahu-oa-temp">--</strong><span id="ahu-oa-rh">--</span></dd></div>
+                  <div><dt>Return air</dt><dd><strong id="ahu-ra-temp">--</strong><span id="ahu-ra-rh">--</span></dd></div>
+                  <div><dt>Mixed air</dt><dd><strong id="ahu-ma-temp">--</strong><span id="ahu-ma-rh">--</span></dd></div>
+                  <div><dt>Supply air</dt><dd><strong id="ahu-sa-temp">--</strong><span id="ahu-sa-rh">--</span></dd></div>
+                </dl>
+                <div class="ahu-smoke-status">
+                  <span id="ahu-ra-smoke">RA SMOKE NORMAL</span>
+                  <span id="ahu-sa-smoke">SA SMOKE NORMAL</span>
+                </div>
+              </article>
+            </aside>
+          </div>
+
+          <div class="pid-layout pid-training-layout">
+            <article class="panel pid-tuning-panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="eyebrow">TRAINING CONTROLS</span>
+                  <h3>Duct Static PID Tuning</h3>
+                </div>
+                <span class="state-pill state-idle" id="pid-tuning-state">DEFAULTS</span>
+              </div>
+
+              <form id="pid-tuning-form">
+                <div class="pid-field-grid">
+                  <label class="field" for="pid-kp">
+                    <span>PROPORTIONAL (P)</span>
+                    <input id="pid-kp" type="number" min="0" max="100" step="0.1" required>
+                    <small>% output / in. w.c.</small>
+                  </label>
+                  <label class="field" for="pid-ki">
+                    <span>INTEGRAL (I)</span>
+                    <input id="pid-ki" type="number" min="0" max="1" step="0.01" required>
+                    <small>% output / (in. w.c. &times; s)</small>
+                  </label>
+                  <label class="field" for="pid-kd">
+                    <span>DERIVATIVE (D)</span>
+                    <input id="pid-kd" type="number" min="0" max="20" step="0.1" required>
+                    <small>% output &times; s / in. w.c.</small>
+                  </label>
+                  <label class="field" for="pid-interval">
+                    <span>INTERVAL</span>
+                    <input id="pid-interval" type="number" min="0.5" max="10" step="0.5" required>
+                    <small>simulated seconds</small>
+                  </label>
+                </div>
+
+                <div class="pid-error-readout">
+                  <div><span>LOOP ERROR</span><strong id="pid-error-value">0.000 in. w.c.</strong></div>
+                  <div><span>VAV DEMAND</span><strong id="pid-vav-demand">0.0%</strong></div>
+                </div>
+
+                <div class="button-row pid-actions">
+                  <button class="button button-primary" id="pid-apply" type="submit">
+                    <i class="fa-solid fa-check" aria-hidden="true"></i>
+                    <span>APPLY TUNING</span>
+                  </button>
+                  <button class="button button-secondary" id="pid-reset-memory" type="button" title="Clear controller memory without changing gains">RESET MEMORY</button>
+                  <button class="button button-secondary" id="pid-restore-defaults" type="button" title="Restore the recommended P, I, D, and interval">DEFAULT TUNING</button>
+                </div>
+              </form>
+
+              <div class="pid-training-note">
+                <i class="fa-solid fa-graduation-cap" aria-hidden="true"></i>
+                <div>
+                  <strong>Tuning practice</strong>
+                  <p>Opening VAV dampers lowers static pressure and calls for more fan speed. Closing dampers produces a short pressure rise before the PID unloads the VFD. The PID signal scales 0&ndash;100% to 0&ndash;60 Hz; while commanded on, the drive clamps its physical output to a 20 Hz minimum (33.3% speed). Increase P for a stronger immediate response, add I to remove steady-state error, and introduce D cautiously.</p>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel pid-trend-panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="eyebrow">LIVE LOOP TREND</span>
+                  <h3>Static Pressure Setpoint vs Actual</h3>
+                </div>
+                <div class="trend-legend" aria-label="Trend series">
+                  <span><i class="trend-key trend-key-setpoint" aria-hidden="true"></i>Setpoint</span>
+                  <span><i class="trend-key trend-key-actual" aria-hidden="true"></i>Actual</span>
+                  <span><i class="trend-key trend-key-speed" aria-hidden="true"></i>Fan speed</span>
+                </div>
+              </div>
+              <div class="pid-trend-shell">
+                <canvas id="pid-trend" width="1200" height="310" role="img" aria-label="Trend of duct static pressure setpoint, actual pressure, and fan speed" aria-describedby="pid-trend-summary"></canvas>
+                <div class="trend-empty" id="pid-trend-empty">Waiting for live AHU-1 samples&hellip;</div>
+                <p class="visually-hidden" id="pid-trend-summary">Waiting for duct-static trend samples.</p>
+              </div>
+              <div class="trend-axis-copy">
+                <span id="pid-trend-pressure-scale" aria-label="Pressure scale zero to 2.5 inches of water column">PRESSURE: 0&ndash;2.5 in. H2O</span>
+                <span id="pid-trend-time-span">LAST 0 SIMULATED SECONDS</span>
+                <span>FAN: 0&ndash;100%</span>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="view" id="view-equipment" data-view-panel="equipment" aria-labelledby="equipment-heading" hidden>
+          <div class="view-heading">
+            <div>
+              <span class="eyebrow">LIVE BACNET OBJECTS</span>
+              <h2 id="equipment-heading">Equipment Explorer</h2>
+              <p>Inspect live values, aliases, signal direction, and active conditions.</p>
+            </div>
+          </div>
+
+          <article class="panel">
+            <div class="filter-bar">
+              <label class="field" for="equipment-group-filter">
+                <span>GROUP</span>
+                <select id="equipment-group-filter">
+                  <option value="">All equipment groups</option>
+                </select>
+              </label>
+              <label class="field field-grow" for="equipment-search">
+                <span>SEARCH</span>
+                <span class="input-with-icon">
+                  <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                  <input id="equipment-search" type="search" placeholder="Alias, object name, group, or object ID">
+                </span>
+              </label>
+              <div class="result-count" aria-live="polite">
+                <strong id="equipment-result-count">0</strong>
+                <span>POINTS</span>
+              </div>
+            </div>
+            <div class="table-shell">
+              <table>
+                <caption>Live BACnet equipment points</caption>
+                <thead>
+                  <tr>
+                    <th>Group</th>
+                    <th>Alias</th>
+                    <th>Point</th>
+                    <th>Object</th>
+                    <th>Direction</th>
+                    <th>Value</th>
+                    <th>Units</th>
+                    <th>Status</th>
+                    <th><span class="visually-hidden">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody id="equipment-table-body"></tbody>
+              </table>
+              <div class="empty-state" id="equipment-empty" hidden>
+                <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
+                <span>No points match the current filters.</span>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section class="view" id="view-operations" data-view-panel="operations" aria-labelledby="operations-heading" hidden>
+          <div class="view-heading">
+            <div>
+              <span class="eyebrow">INSTRUCTOR CONTROLS</span>
+              <h2 id="operations-heading">Operations</h2>
+              <p>Run training scenarios, inject faults, and manage point overrides.</p>
+            </div>
+          </div>
+
+          <div class="operations-grid">
+            <div class="operations-main">
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="eyebrow">LIVE TRAINING</span>
+                    <h3>Scenario Control</h3>
+                  </div>
+                  <div class="panel-actions">
+                    <button class="button button-secondary button-small" id="scenario-stop" type="button">STOP</button>
+                    <button class="button button-danger button-small" id="scenario-reset" type="button">RESET</button>
+                  </div>
+                </div>
+                <div class="active-scenario" id="active-scenario">
+                  <div class="empty-state compact">
+                    <i class="fa-solid fa-flask" aria-hidden="true"></i>
+                    <span>No scenario is running.</span>
+                  </div>
+                </div>
+                <div class="scenario-list" id="scenario-list" aria-live="polite"></div>
+              </article>
+            </div>
+
+            <div class="operations-side">
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="eyebrow">ENVIRONMENT</span>
+                    <h3>Site Conditions</h3>
+                  </div>
+                </div>
+                <form id="weather-form">
+                  <div class="form-grid two">
+                    <label class="field" for="weather-temp">
+                      <span>TARGET &deg;F</span>
+                      <input id="weather-temp" type="number" min="-40" max="130" step="0.5" required>
+                    </label>
+                    <label class="field" for="weather-humidity">
+                      <span>TARGET %RH</span>
+                      <input id="weather-humidity" type="number" min="0" max="100" step="0.5" required>
+                    </label>
+                  </div>
+                  <button class="button button-primary button-full" type="submit">
+                    <i class="fa-solid fa-cloud-sun" aria-hidden="true"></i>
+                    <span>APPLY SITE TARGETS</span>
+                  </button>
+                </form>
+              </article>
+
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="eyebrow">CONTROLLED FAILURE</span>
+                    <h3>Fault Injection</h3>
+                  </div>
+                </div>
+                <form id="fault-form">
+                  <label class="field" for="fault-type">
+                    <span>FAULT MECHANIC</span>
+                    <select id="fault-type" required></select>
+                  </label>
+                  <div class="form-grid two" id="fault-target-fields">
+                    <label class="field" for="fault-group">
+                      <span>GROUP</span>
+                      <select id="fault-group" required></select>
+                    </label>
+                    <label class="field" for="fault-point">
+                      <span>POINT ALIAS</span>
+                      <select id="fault-point" required></select>
+                    </label>
+                  </div>
+                  <label class="field" id="fault-parameter-field" for="fault-parameter">
+                    <span id="fault-parameter-label">VALUE</span>
+                    <input id="fault-parameter" type="number">
+                    <small id="fault-parameter-help"></small>
+                  </label>
+                  <p class="form-note" id="fault-scope-note"></p>
+                  <button class="button button-warning button-full" type="submit">
+                    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                    <span>ACTIVATE FAULT</span>
+                  </button>
+                </form>
+              </article>
+
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="eyebrow">PRIORITY 3</span>
+                    <h3>Force / Release</h3>
+                  </div>
+                </div>
+                <form id="force-form">
+                  <div class="form-grid two">
+                    <label class="field" for="force-group">
+                      <span>GROUP</span>
+                      <select id="force-group" required></select>
+                    </label>
+                    <label class="field" for="force-point">
+                      <span>POINT ALIAS</span>
+                      <select id="force-point" required></select>
+                    </label>
+                  </div>
+                  <label class="field" for="force-value">
+                    <span>REQUIRED VALUE</span>
+                    <input id="force-value" type="text" autocomplete="off" placeholder="Number, true, or false" required>
+                  </label>
+                  <div class="button-row">
+                    <button class="button button-primary" id="force-apply" type="submit">FORCE</button>
+                    <button class="button button-secondary" id="force-release" type="button">RELEASE</button>
+                  </div>
+                </form>
+              </article>
+
+              <article class="panel">
+                <div class="panel-heading">
+                  <div>
+                    <span class="eyebrow">ACTIVE CONDITIONS</span>
+                    <h3>Faults &amp; Overrides</h3>
+                  </div>
+                  <button class="button button-danger button-small" id="fault-clear-all" type="button">CLEAR ALL</button>
+                </div>
+                <div class="fault-list" id="fault-list"></div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="view-ai" data-view-panel="ai" aria-labelledby="ai-heading" hidden>
+          <div class="view-heading">
+            <div>
+              <span class="eyebrow">VALIDATED ORCHESTRATION</span>
+              <h2 id="ai-heading">AI Console</h2>
+              <p>Translate instructor intent into previewed, validated simulator actions.</p>
+            </div>
+          </div>
+
+          <div class="ai-status-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="eyebrow">MODEL LINK</span>
+                  <h3>Ollama Status</h3>
+                </div>
+                <button class="icon-button" id="llm-test" type="button" aria-label="Retest Ollama connection">
+                  <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+                </button>
+              </div>
+              <dl class="telemetry-list">
+                <div><dt>Status</dt><dd><span class="state-pill state-starting" id="llm-state">CHECKING</span></dd></div>
+                <div><dt>Host</dt><dd id="llm-host">&mdash;</dd></div>
+                <div><dt>Configured model</dt><dd id="llm-model">&mdash;</dd></div>
+                <div><dt>Available</dt><dd id="llm-models">&mdash;</dd></div>
+              </dl>
+            </article>
+            <article class="panel envelope-panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="eyebrow">OPERATING ENVELOPE</span>
+                  <h3>Approval Required</h3>
+                </div>
+                <i class="fa-solid fa-shield-halved panel-symbol" aria-hidden="true"></i>
+              </div>
+              <p>AI proposals use the same scenario, fault, weather, and force paths as the instructor controls. Equipment structure and raw BACnet commands remain outside the allowed envelope.</p>
+            </article>
+          </div>
+
+          <article class="panel">
+            <form id="llm-form">
+              <label class="field" for="llm-prompt">
+                <span>INSTRUCTOR REQUEST</span>
+                <textarea id="llm-prompt" rows="4" required placeholder="Create a scenario where Chiller-2's CHWS sensor drifts high after one minute of operation."></textarea>
+              </label>
+              <div class="button-row">
+                <button class="button button-primary" id="llm-propose" type="submit">
+                  <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+                  <span>BUILD PROPOSAL</span>
+                </button>
+                <span class="inline-status" id="llm-propose-status" aria-live="polite"></span>
+              </div>
+            </form>
+          </article>
+
+          <article class="panel proposal-panel" id="proposal-panel" hidden>
+            <div class="panel-heading">
+              <div>
+                <span class="eyebrow">REVIEW BEFORE APPLYING</span>
+                <h3>Proposed Action Bundle</h3>
+              </div>
+              <span class="state-pill" id="proposal-state">&mdash;</span>
+            </div>
+            <div class="proposal-summary" id="proposal-summary"></div>
+            <div class="proposal-actions" id="proposal-actions"></div>
+            <div class="button-row">
+              <button class="button button-primary" id="proposal-apply" type="button">
+                <i class="fa-solid fa-check" aria-hidden="true"></i>
+                <span>APPROVE &amp; APPLY</span>
+              </button>
+              <button class="button button-secondary" id="proposal-dismiss" type="button">DISMISS</button>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div>
+                <span class="eyebrow">ACCOUNTABILITY</span>
+                <h3>Audit Trail</h3>
+              </div>
+            </div>
+            <div class="table-shell table-compact">
+              <table>
+                <caption>Recent AI orchestration audit entries</caption>
+                <thead>
+                  <tr><th>Time</th><th>Event</th><th>Request</th><th>Detail</th></tr>
+                </thead>
+                <tbody id="audit-table-body"></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+
+        <section class="view" id="view-logs" data-view-panel="logs" aria-labelledby="logs-heading" hidden>
+          <div class="view-heading">
+            <div>
+              <span class="eyebrow">LIVE DIAGNOSTICS</span>
+              <h2 id="logs-heading">System Logs</h2>
+              <p>Application events and BACnet traffic are requested only while this view is open.</p>
+            </div>
+            <button class="button button-secondary" id="logs-refresh" type="button">
+              <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+              <span>REFRESH</span>
+            </button>
+          </div>
+
+          <div class="logs-grid">
+            <article class="panel log-panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="eyebrow">SIMULATOR</span>
+                  <h3>Application Log</h3>
+                </div>
+                <label class="check-control" for="follow-app">
+                  <input id="follow-app" type="checkbox" checked>
+                  <span>FOLLOW</span>
+                </label>
+              </div>
+              <pre class="log-output" id="application-log" tabindex="0" aria-label="Application log output">Waiting for log data&hellip;</pre>
+            </article>
+            <article class="panel log-panel">
+              <div class="panel-heading">
+                <div>
+                  <span class="eyebrow">NETWORK</span>
+                  <h3>BACnet Traffic</h3>
+                </div>
+                <label class="check-control" for="follow-bacnet">
+                  <input id="follow-bacnet" type="checkbox" checked>
+                  <span>FOLLOW</span>
+                </label>
+              </div>
+              <pre class="log-output" id="bacnet-log" tabindex="0" aria-label="BACnet traffic log output">Waiting for BACnet traffic&hellip;</pre>
+            </article>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="false"></div>
+
+  <dialog class="confirm-dialog" id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+    <div class="dialog-icon" aria-hidden="true">
+      <i class="fa-solid fa-triangle-exclamation"></i>
+    </div>
+    <div class="dialog-copy">
+      <span class="eyebrow">CONFIRM ACTION</span>
+      <h2 id="confirm-title">Confirm</h2>
+      <p id="confirm-message"></p>
+    </div>
+    <div class="dialog-actions">
+      <button class="button button-secondary" id="confirm-cancel" type="button">CANCEL</button>
+      <button class="button button-danger" id="confirm-accept" type="button">CONFIRM</button>
+    </div>
+  </dialog>
+</body>
+</html>

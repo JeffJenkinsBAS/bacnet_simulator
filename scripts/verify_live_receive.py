@@ -6,7 +6,7 @@ is already running. It reads config/network.json to find the simulator's
 bind address/port, then:
 
   1. snapshots messages_in / messages_blocked via the REST API
-     (http://127.0.0.1:8000/api/status),
+     (http://127.0.0.1:8001/api/status),
   2. sends several real BACnet/IP ReadProperty requests from its own
      bacpypes3 client socket (a genuinely separate UDP endpoint, same
      approach as tests/test_bacnet_integration.py),
@@ -43,7 +43,7 @@ from bacpypes3.local.networkport import NetworkPortObject
 from bacpypes3.pdu import IPv4Address
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "network.json"
-API_STATUS_URL = "http://127.0.0.1:8000/api/status"
+API_STATUS_URL = "http://127.0.0.1:8001/api/status"
 CLIENT_PORT_OFFSET = 101  # client binds bind_address:(udp_port + 101)
 
 # VAV-1 offset 11000; discharge_temp local instance 1 -> analog-input,11001.

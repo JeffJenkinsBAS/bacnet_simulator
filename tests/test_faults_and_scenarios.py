@@ -18,9 +18,6 @@ from app.scenario import Scenario
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 GROUP_ID = "ACI-SIM-VAV-1"
 
-pytestmark = pytest.mark.asyncio
-
-
 def _load_group_config() -> EquipmentGroupConfig:
     with open(CONFIG_DIR / "devices" / "vav_1.json") as f:
         return EquipmentGroupConfig.model_validate(json.load(f))
@@ -100,6 +97,7 @@ async def test_stuck_value_fault_on_input_freezes_what_equipment_model_sees():
 
     fm.set_fault("f4", FaultType.stuck_value, GROUP_ID, "damper_position_command", {})
     vav.tick(1.0)  # let the fault capture the CURRENT (50.0) commanded value before anything else changes
+    stuck_feedback = view.get("damper_position_feedback")
 
     # WebCTRL writes a big new command -- the real object updates, but the equipment model must not react.
     await obj.write_property("presentValue", Real(100.0), priority=8)
@@ -110,6 +108,9 @@ async def test_stuck_value_fault_on_input_freezes_what_equipment_model_sees():
     assert real_object_value == pytest.approx(100.0), "the real BACnet object must still reflect the new write"
     assert view.get("airflow") == pytest.approx(stuck_airflow, abs=20.0), (
         "the equipment model's airflow must not have responded to the new command while stuck_value is active"
+    )
+    assert view.get("damper_position_feedback") == pytest.approx(stuck_feedback), (
+        "AV:85 feedback must hold the captured effective position while the damper command is stuck"
     )
 
 
@@ -139,6 +140,8 @@ async def test_reversed_actuator_inverts_commanded_percentage():
     await obj.write_property("presentValue", Real(20.0), priority=8)
 
     assert view.get_commanded("damper_position_command") == pytest.approx(80.0)
+    vav.tick(1.0)
+    assert view.get("damper_position_feedback") == pytest.approx(80.0)
 
 
 def test_clear_fault_and_clear_all():

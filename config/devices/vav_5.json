@@ -1,7 +1,23 @@
 {
   "group_id": "ACI-SIM-VAV-5",
   "instance_offset": 15000,
-  "description": "Simulated virtual VAV zone 5 -- no physical controller exists yet. Same point set as VAV-1/VAV-2 plus a simulated Zone Temp, since there's no real ZS thermostat for this zone.",
+  "description": "Simulated West perimeter office served by VAV-5; no physical controller exists yet. Same core terminal points as VAV-1/VAV-2 plus simulated Zone Temp and Zone Humidity.",
+  "model_parameters": {
+    "space_name": "West perimeter office",
+    "floor_area_sqft": 900.0,
+    "max_airflow_cfm": 720.0,
+    "occupied_minimum_airflow_cfm": 215.0,
+    "heating_maximum_airflow_cfm": 360.0,
+    "zone_thermal_capacitance_btuper_f": 9900.0,
+    "zone_envelope_ua_btuh_per_f": 250.0,
+    "zone_peak_solar_gain_btuh": 4500.0,
+    "zone_solar_peak_hour": 16.0,
+    "zone_internal_sensible_gain_btuh_per_sqft": 7.2,
+    "zone_occupants_per_1000_sqft": 5.0,
+    "zone_humidity_capacitance_multiplier": 12.0,
+    "zone_initial_humidity_pct": 46.0,
+    "zone_adjacent_mixing_cfm": 22.0
+  },
   "points": [
     {
       "alias": "discharge_temp",
@@ -32,11 +48,11 @@
       "signal_direction": "webctrl_to_sim",
       "writable": true,
       "commandable": true,
-      "initial_value": 0.0,
+      "initial_value": 68.0,
       "minimum": 0.0,
       "maximum": 100.0,
       "update_interval_seconds": 1,
-      "relinquish_default": 0.0
+      "relinquish_default": 68.0
     },
     {
       "alias": "hw_valve_command",
@@ -59,16 +75,16 @@
       "object_type": "analog-output",
       "object_instance": 22,
       "object_name": "VAV-5 Airflow Setpoint",
-      "description": "Calculated target airflow -- context for the simulator, not a hard override of the simulated Airflow value",
+      "description": "Pressure-independent target airflow; actual flow is bounded by damper capacity and AHU duct pressure",
       "units": "cubic-feet-per-minute",
       "signal_direction": "webctrl_to_sim",
       "writable": true,
       "commandable": true,
-      "initial_value": 0.0,
+      "initial_value": 430.0,
       "minimum": 0.0,
-      "maximum": 2000.0,
+      "maximum": 720.0,
       "update_interval_seconds": 1,
-      "relinquish_default": 0.0
+      "relinquish_default": 430.0
     },
     {
       "alias": "airflow",
@@ -82,9 +98,89 @@
       "commandable": false,
       "initial_value": 0.0,
       "minimum": 0.0,
-      "maximum": 2000.0,
+      "maximum": 720.0,
       "update_interval_seconds": 1,
       "cov_increment": 5.0
+    },
+    {
+      "alias": "heating_min_airflow",
+      "object_type": "analog-value",
+      "object_instance": 81,
+      "object_name": "VAV-5 Heating Min Airflow",
+      "description": "Read-only heating-mode minimum airflow design value",
+      "units": "cubic-feet-per-minute",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "commandable": false,
+      "initial_value": 215.0,
+      "minimum": 0.0,
+      "maximum": 720.0,
+      "update_interval_seconds": 1,
+      "cov_increment": 5.0
+    },
+    {
+      "alias": "heating_max_airflow",
+      "object_type": "analog-value",
+      "object_instance": 82,
+      "object_name": "VAV-5 Heating Max Airflow",
+      "description": "Read-only heating-mode maximum airflow design value",
+      "units": "cubic-feet-per-minute",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "commandable": false,
+      "initial_value": 360.0,
+      "minimum": 0.0,
+      "maximum": 720.0,
+      "update_interval_seconds": 1,
+      "cov_increment": 5.0
+    },
+    {
+      "alias": "cooling_min_airflow",
+      "object_type": "analog-value",
+      "object_instance": 83,
+      "object_name": "VAV-5 Cooling Min Airflow",
+      "description": "Read-only cooling-mode minimum airflow design value",
+      "units": "cubic-feet-per-minute",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "commandable": false,
+      "initial_value": 215.0,
+      "minimum": 0.0,
+      "maximum": 720.0,
+      "update_interval_seconds": 1,
+      "cov_increment": 5.0
+    },
+    {
+      "alias": "cooling_max_airflow",
+      "object_type": "analog-value",
+      "object_instance": 84,
+      "object_name": "VAV-5 Cooling Max Airflow",
+      "description": "Read-only cooling-mode maximum airflow design value",
+      "units": "cubic-feet-per-minute",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "commandable": false,
+      "initial_value": 720.0,
+      "minimum": 0.0,
+      "maximum": 720.0,
+      "update_interval_seconds": 1,
+      "cov_increment": 5.0
+    },
+    {
+      "alias": "damper_position_feedback",
+      "object_type": "analog-value",
+      "object_instance": 85,
+      "object_name": "VAV-5 Damper Position Feedback",
+      "description": "Read-only simulated effective VAV damper position feedback",
+      "units": "percent",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "commandable": false,
+      "initial_value": 68.0,
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "update_interval_seconds": 1,
+      "cov_increment": 0.5
     },
     {
       "alias": "zone_temp",
@@ -95,14 +191,33 @@
       "units": "degrees-fahrenheit",
       "signal_direction": "sim_to_webctrl",
       "writable": false,
-      "initial_value": 72.0,
-      "minimum": 50.0,
-      "maximum": 100.0,
+      "initial_value": 72.7,
+      "minimum": 45.0,
+      "maximum": 105.0,
       "update_interval_seconds": 1,
       "cov_increment": 0.2,
       "normal_range": {
         "low": 68.0,
         "high": 76.0
+      }
+    },
+    {
+      "alias": "zone_humidity",
+      "object_type": "analog-input",
+      "object_instance": 3,
+      "object_name": "VAV-5 Zone Humidity",
+      "description": "Simulated zone relative humidity for this virtual zone",
+      "units": "percent-relative-humidity",
+      "signal_direction": "sim_to_webctrl",
+      "writable": false,
+      "initial_value": 46.0,
+      "minimum": 0.0,
+      "maximum": 100.0,
+      "update_interval_seconds": 1,
+      "cov_increment": 1.0,
+      "normal_range": {
+        "low": 30.0,
+        "high": 60.0
       }
     }
   ]

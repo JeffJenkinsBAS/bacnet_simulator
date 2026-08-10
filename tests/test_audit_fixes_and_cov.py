@@ -18,9 +18,12 @@ Covers:
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from bacpypes3.app import Application
+from bacpypes3.apdu import AbortPDU
 from bacpypes3.basetypes import Reliability
 from bacpypes3.local.device import DeviceObject
 from bacpypes3.local.networkport import NetworkPortObject
@@ -37,12 +40,33 @@ from app.equipment.vav_single_duct import SingleDuctVavModel, VavParameters
 from app.faults import FaultManager, FaultType
 from app.registry import PointRegistry
 from app.scenario import ScenarioEngine
-from app.transport import BacnetTransport
+from app.transport import BacnetTransport, NetworkGuardedApplication
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 
 # distinct range from test_bacnet_integration.py's 47850+ block
 _next_port = [47880]
+
+
+async def test_transport_stop_cancels_cov_lifetimes_before_closing_links() -> None:
+    subscriptions = [SimpleNamespace(), SimpleNamespace()]
+    detection = SimpleNamespace(cov_subscriptions=subscriptions)
+    link_layer = MagicMock()
+    app = MagicMock()
+    app._cov_detections = {("analog-input", 1): detection}
+    app.link_layers = {"test": link_layer}
+
+    transport = BacnetTransport.__new__(BacnetTransport)
+    transport.app = app
+    transport.supervisory_config = SimpleNamespace(device_name="TEST")
+
+    transport.stop()
+
+    assert app.cancel_subscription.call_count == 2
+    app.cancel_subscription.assert_any_call(subscriptions[0])
+    app.cancel_subscription.assert_any_call(subscriptions[1])
+    link_layer.close.assert_called_once()
+    assert transport.app is None
 
 pytestmark = pytest.mark.asyncio
 
@@ -82,16 +106,16 @@ async def test_vav_discharge_temp_clamped_at_hot_water_temp():
         "ACI-SIM-VAV-1", view,
         parameters=VavParameters(hot_water_supply_temp_f=140.0, thermal_time_constant_seconds=5.0),
     )
-    # Normal heating mode: damper nearly closed (minimum flow), reheat wide open.
-    await _write_commanded(registry, "ACI-SIM-VAV-1.damper_position_command", 2.0)
+    # Normal heating mode: occupied minimum flow, reheat wide open.
+    await _write_commanded(registry, "ACI-SIM-VAV-1.damper_position_command", 25.0)
     await _write_commanded(registry, "ACI-SIM-VAV-1.hw_valve_command", 100.0)
     for _ in range(600):
         vav.tick(1.0)
     discharge = view.get("discharge_temp")
-    assert discharge <= 140.0 + 0.5, (
-        f"discharge temp {discharge:.0f}F exceeds the hot-water loop -- the unbounded dilution bug is back"
+    assert discharge <= 95.0 + 0.5, (
+        f"discharge temp {discharge:.0f}F exceeds the configured VAV DAT limit"
     )
-    assert discharge > 100.0, "reheat at minimum flow should still be heating hard toward the clamp"
+    assert discharge > 85.0, "reheat at occupied minimum flow should approach the 90-95F heating range"
 
 
 # ---------------------------------------------------------------------------
@@ -116,6 +140,7 @@ async def _command_chiller_on(registry: PointRegistry, pumps: bool) -> None:
     await _write_commanded(registry, "ACI-SIM-CHILLER-1.chiller_enable", True)
     await _write_commanded(registry, "ACI-SIM-CHILLER-1.chiller_ss", True)
     if pumps:
+        await _write_commanded(registry, "ACI-SIM-CHILLER-1.chw_iso_valve", True)
         await _write_commanded(registry, "ACI-SIM-CHILLER-1.chw_pump_ss", True)
         await _write_commanded(registry, "ACI-SIM-CHILLER-1.cw_pump_ss", True)
 
@@ -228,6 +253,7 @@ async def test_plant_manager_mirrors_proof_and_moves_common_header():
 
     await _write_commanded(registry, "ACI-SIM-CHILLER-1.chiller_enable", True)
     await _write_commanded(registry, "ACI-SIM-CHILLER-1.chiller_ss", True)
+    await _write_commanded(registry, "ACI-SIM-CHILLER-1.chw_iso_valve", True)
     await _write_commanded(registry, "ACI-SIM-CHILLER-1.chw_pump_ss", True)
     await _write_commanded(registry, "ACI-SIM-CHILLER-1.cw_pump_ss", True)
     for _ in range(400):
@@ -313,13 +339,105 @@ async def test_instructor_force_works_on_binary_writable_points():
 
     engine._apply_force_or_release("ACI-SIM-AHU-1", "sa_fan_ss", "release_value", None)
     await asyncio.sleep(0.05)
+    assert str(obj.presentValue) == "inactive", "release must clear the instructor priority slot"
 
 
-async def test_engine_start_off_loop_fails_cleanly():
+async def test_instructor_release_clears_analog_priority_slot():
+    fm = FaultManager()
+    registry = PointRegistry([_group("vav_3.json")])
+    registry.build_objects()
+    engine = ScenarioEngine(fm, registry, get_sim_seconds=lambda: 0.0, get_equipment=lambda: [])
+    obj = registry.all_points()["ACI-SIM-VAV-3.airflow_setpoint"].bacnet_object
+
+    engine._apply_force_or_release(
+        "ACI-SIM-VAV-3",
+        "airflow_setpoint",
+        "set_value",
+        350.0,
+    )
+    await asyncio.sleep(0.05)
+    assert float(obj.presentValue) == 350.0
+
+    engine._apply_force_or_release(
+        "ACI-SIM-VAV-3",
+        "airflow_setpoint",
+        "release_value",
+        None,
+    )
+    await asyncio.sleep(0.05)
+    assert float(obj.presentValue) == 120.0, "release must restore the configured relinquish default"
+
+
+async def test_stop_all_relinquishes_every_tracked_priority_3_override():
+    fm = FaultManager()
+    registry = PointRegistry([_group("ahu_1.json"), _group("vav_3.json")])
+    registry.build_objects()
+    engine = ScenarioEngine(fm, registry, get_sim_seconds=lambda: 0.0, get_equipment=lambda: [])
+
+    binary = registry.all_points()["ACI-SIM-AHU-1.sa_fan_ss"].bacnet_object
+    analog = registry.all_points()["ACI-SIM-VAV-3.airflow_setpoint"].bacnet_object
+    from bacpypes3.basetypes import BinaryPV
+    from bacpypes3.primitivedata import Real
+
+    await binary.write_property(
+        "presentValue",
+        BinaryPV("inactive"),
+        priority=8,
+    )
+    await analog.write_property("presentValue", Real(250.0), priority=8)
+
+    engine._apply_force_or_release("ACI-SIM-AHU-1", "sa_fan_ss", "set_value", True)
+    engine._apply_force_or_release(
+        "ACI-SIM-VAV-3",
+        "airflow_setpoint",
+        "set_value",
+        350.0,
+    )
+    await engine.drain_priority_writes()
+    assert str(binary.presentValue) == "active"
+    assert float(analog.presentValue) == 350.0
+    assert engine.is_priority_forced("ACI-SIM-AHU-1", "sa_fan_ss")
+    assert engine.is_priority_forced("ACI-SIM-VAV-3", "airflow_setpoint")
+
+    engine.reset()
+    await engine.drain_priority_writes()
+
+    assert str(binary.presentValue) == "inactive"
+    assert float(analog.presentValue) == 250.0
+    assert binary.priorityArray[2].dict_contents() == {"null": ()}
+    assert analog.priorityArray[2].dict_contents() == {"null": ()}
+    assert not engine._priority_overrides
+
+
+async def test_instructor_force_rejects_out_of_range_commandable_value():
+    fm = FaultManager()
+    registry = PointRegistry([_group("vav_3.json")])
+    registry.build_objects()
+    engine = ScenarioEngine(fm, registry, get_sim_seconds=lambda: 0.0, get_equipment=lambda: [])
+    obj = registry.all_points()["ACI-SIM-VAV-3.damper_position_command"].bacnet_object
+    original = float(obj.presentValue)
+
+    accepted = engine._apply_force_or_release(
+        "ACI-SIM-VAV-3",
+        "damper_position_command",
+        "set_value",
+        500.0,
+    )
+    await engine.drain_priority_writes()
+
+    assert accepted is False
+    assert float(obj.presentValue) == original
+    assert not engine._priority_overrides
+
+
+async def test_engine_lifecycle_is_explicitly_async_and_clean():
     engine = SimulationEngine(equipment=[])
-    with pytest.raises(RuntimeError):
-        await asyncio.to_thread(engine.start)  # worker thread = no running loop, like a sync FastAPI endpoint
-    assert engine.running is False, "a failed start must not leave running=True with no loop task"
+    await engine.start()
+    assert engine.running is True
+    assert engine._task is not None
+    await engine.stop()
+    assert engine.running is False
+    assert engine._task is None
 
 
 # ---------------------------------------------------------------------------
@@ -377,6 +495,19 @@ async def test_peer_allowlist_blocks_unlisted_sources_and_admits_listed():
 # ---------------------------------------------------------------------------
 # COV: confirmed and unconfirmed delivery over real BACnet/IP
 # ---------------------------------------------------------------------------
+
+async def test_confirmed_cov_no_response_is_counted_without_callback_exception():
+    app = object.__new__(NetworkGuardedApplication)
+    app.cov_notification_failures = 0
+    app.last_cov_notification_failure = None
+    future = MagicMock()
+    future.result.side_effect = AbortPDU(reason="no-response")
+
+    app.cov_confirmation(SimpleNamespace(), future)
+
+    assert app.cov_notification_failures == 1
+    assert app.last_cov_notification_failure["reason"] == "no-response"
+
 
 @pytest.mark.parametrize("confirmed", [False, True], ids=["unconfirmed", "confirmed"])
 async def test_cov_notification_delivery(confirmed):

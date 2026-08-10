@@ -18,6 +18,7 @@ scoped rather than pretending to grade the student's response.
 """
 from __future__ import annotations
 
+import asyncio
 import glob
 import json
 import logging
@@ -89,6 +90,8 @@ class ScenarioEngine:
         self.scenarios: dict[str, Scenario] = {}
         self._run: Optional[ScenarioRunState] = None
         self._scenario_fault_ids: list[str] = []  # faults created by the running scenario, for clean teardown
+        self._priority_overrides: set[tuple[str, str]] = set()
+        self._pending_priority_writes: set[asyncio.Task] = set()
 
     def load_all(self, directory: Path) -> None:
         for path in sorted(glob.glob(str(directory / "*.json"))):
@@ -142,6 +145,11 @@ class ScenarioEngine:
         return self._run
 
     def stop(self) -> None:
+        # Scenario/instructor writes to commandable points live in the
+        # BACnet priority array, not FaultManager. Relinquish every tracked
+        # priority-3 slot so Stop/Reset cannot silently outrank WebCTRL.
+        for group_id, alias in tuple(self._priority_overrides):
+            self._apply_force_or_release(group_id, alias, "release_value", None)
         for fault_id in self._scenario_fault_ids:
             self.fault_manager.clear_fault(fault_id)
         self._scenario_fault_ids.clear()
@@ -153,6 +161,20 @@ class ScenarioEngine:
         """Stop the current scenario and clear ALL faults, including manual instructor forces."""
         self.stop()
         self.fault_manager.clear_all()
+
+    async def drain_priority_writes(self) -> None:
+        """Wait until scheduled instructor priority writes have completed."""
+        while self._pending_priority_writes:
+            pending = tuple(self._pending_priority_writes)
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    def is_priority_forced(self, group_id: str, alias: str) -> bool:
+        """True when this process owns the point's instructor P3 slot."""
+        return (group_id, alias) in self._priority_overrides
+
+    @property
+    def active_priority_override_count(self) -> int:
+        return len(self._priority_overrides)
 
     def _apply_initial_conditions(self, scenario: Scenario) -> None:
         ic = scenario.initial_conditions
@@ -219,7 +241,7 @@ class ScenarioEngine:
         else:
             logger.warning("Scenario '%s' event has unknown action '%s' -- ignored", scenario.scenario_id, event.action)
 
-    def _apply_force_or_release(self, group_id: str, alias: str, action: str, value: Any) -> None:
+    def _apply_force_or_release(self, group_id: str, alias: str, action: str, value: Any) -> bool:
         """
         Shared by scenario set_value/release_value events AND the manual
         Instructor Panel Force/Release API -- see module docstring for why
@@ -230,21 +252,56 @@ class ScenarioEngine:
             point_config = self.registry.all_points()[f"{group_id}.{alias}"].config
         except KeyError:
             logger.warning("Force/release target '%s.%s' does not exist -- ignored", group_id, alias)
-            return
+            return False
 
         if point_config.writable:
-            obj = self.registry.all_points()[f"{group_id}.{alias}"].bacnet_object
-            priority = 3  # "instructor override" -- below life-safety (1-2), above typical operator/schedule levels
-            import asyncio
-
-            from bacpypes3.basetypes import BinaryPV
-            from bacpypes3.primitivedata import Real
-
+            is_set = action == "set_value"
             from app.config_models import ObjectType
 
             is_binary = point_config.object_type in (
-                ObjectType.binary_input, ObjectType.binary_output, ObjectType.binary_value
+                ObjectType.binary_input,
+                ObjectType.binary_output,
+                ObjectType.binary_value,
             )
+            if is_set and not is_binary:
+                try:
+                    numeric_value = float(value)
+                except (TypeError, ValueError):
+                    logger.warning(
+                        "Force target '%s.%s' requires a numeric value -- ignored",
+                        group_id,
+                        alias,
+                    )
+                    return False
+                if (
+                    point_config.minimum is not None
+                    and numeric_value < point_config.minimum
+                ) or (
+                    point_config.maximum is not None
+                    and numeric_value > point_config.maximum
+                ):
+                    logger.warning(
+                        "Force target '%s.%s' value %s is outside [%s, %s] -- ignored",
+                        group_id,
+                        alias,
+                        numeric_value,
+                        point_config.minimum,
+                        point_config.maximum,
+                    )
+                    return False
+
+            obj = self.registry.all_points()[f"{group_id}.{alias}"].bacnet_object
+            priority = 3  # "instructor override" -- below life-safety (1-2), above typical operator/schedule levels
+
+            from bacpypes3.basetypes import BinaryPV
+            from bacpypes3.primitivedata import Null, Real
+
+            target = (group_id, alias)
+            if action == "set_value":
+                # Track the requested write before it runs. This makes an
+                # immediate Stop/Reset schedule a later relinquish even if
+                # the set task has not reached the object yet.
+                self._priority_overrides.add(target)
 
             async def _write():
                 try:
@@ -259,11 +316,21 @@ class ScenarioEngine:
                             cast_value = Real(float(value))
                         await obj.write_property("presentValue", cast_value, priority=priority)
                     else:
-                        await obj.write_property("presentValue", None, priority=priority)  # relinquish
+                        await obj.write_property(
+                            "presentValue",
+                            Null(()),
+                            priority=priority,
+                        )  # relinquish
+                        self._priority_overrides.discard(target)
                 except Exception:  # noqa: BLE001 - scenario authoring error shouldn't crash the sim loop
+                    if action == "set_value":
+                        self._priority_overrides.discard(target)
                     logger.exception("Force/release write failed for %s.%s", group_id, alias)
 
-            asyncio.ensure_future(_write())
+            task = asyncio.create_task(_write())
+            self._pending_priority_writes.add(task)
+            task.add_done_callback(self._pending_priority_writes.discard)
+            return True
         else:
             fault_id = f"{FORCE_ID_PREFIX}{group_id}.{alias}"
             if action == "set_value":
@@ -274,6 +341,7 @@ class ScenarioEngine:
                 self._scenario_fault_ids.append(fault_id)
             else:
                 self.fault_manager.clear_fault(fault_id)
+            return True
 
     def status(self) -> dict:
         if self._run is None:

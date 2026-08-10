@@ -24,11 +24,16 @@ from app.registry import PointRegistry
 
 @dataclass
 class BoilerParameters:
-    purge_seconds: float = 15.0
-    ignition_seconds: float = 10.0
+    # Run proof is intentionally accelerated so a normal start proves before
+    # the command center's 15-real-second failure timer. Water temperature
+    # still warms on the slower thermal time constant below.
+    purge_seconds: float = 6.0
+    ignition_seconds: float = 4.0
     hws_setpoint_f: float = 180.0
-    hws_time_constant_seconds: float = 60.0
+    hws_time_constant_seconds: float = 90.0
     pump_start_delay_seconds: float = 3.0
+    minimum_hws_setpoint_f: float = 100.0
+    maximum_hws_setpoint_f: float = 200.0
 
 
 class BoilerModel(EquipmentModel):
@@ -62,6 +67,19 @@ class BoilerModel(EquipmentModel):
         """Public proof status, mirrored to the Boiler Manager's boilerN_ok points."""
         return self._proven
 
+    @property
+    def hws_temp_f(self) -> float:
+        return self._hws_temp
+
+    @property
+    def hw_pump_running(self) -> bool:
+        """Distribution-pump proof used by downstream AHU/VAV coils."""
+        return self._hw_pump_running
+
+    @property
+    def circ_pump_running(self) -> bool:
+        return self._circ_pump_running
+
     def tick(self, dt_seconds: float) -> None:
         ss = self.registry.get_commanded("boiler_ss") == 1.0
         if self.manager_registry is not None and self.manager_enable_alias is not None:
@@ -93,7 +111,15 @@ class BoilerModel(EquipmentModel):
             and self._enabled_seconds >= (self.params.purge_seconds + self.params.ignition_seconds)
         )
 
-        setpoint = hws_reset if hws_reset else self.params.hws_setpoint_f
+        setpoint = (
+            hws_reset
+            if hws_reset is not None and hws_reset >= self.params.minimum_hws_setpoint_f
+            else self.params.hws_setpoint_f
+        )
+        setpoint = max(
+            self.params.minimum_hws_setpoint_f,
+            min(self.params.maximum_hws_setpoint_f, setpoint),
+        )
         target = setpoint if self._proven else 100.0
         self._hws_temp = self.approach(self._hws_temp, target, dt_seconds, self.params.hws_time_constant_seconds)
 

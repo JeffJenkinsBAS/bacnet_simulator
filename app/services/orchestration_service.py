@@ -95,6 +95,15 @@ class OrchestrationService:
             )
             return ApplyResult(applied=False, error="; ".join(validation.errors))
 
+        # A read-only bundle (explain_behavior / summarize_events) validates
+        # with zero actions, but there is nothing to apply and applying it must
+        # never mutate simulator state. Every state-changing intent is only
+        # valid with a nonempty actions list, so guarding on emptiness here
+        # rejects exactly the read-only case without affecting action bundles.
+        if not bundle.actions:
+            self.audit_service.record("apply_noop", request_id=bundle.request_id)
+            return ApplyResult(applied=False, error="nothing to apply: read-only bundle has no actions")
+
         results = []
         try:
             for action in bundle.actions:

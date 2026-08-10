@@ -1,0 +1,197 @@
+{
+  "scenario_id": "ahu1_high_static_safety_bypass",
+  "title": "AHU-1 High-Static Safety Bypass and Duct Failure",
+  "description": "A deliberately miscommissioned high-static safety and failed-low duct-pressure signal allow the supply fan to drive against closed VAV dampers. This is a training-only demonstration of why an independent, manual-reset high-static switch must stop the fan before the duct pressure class is exceeded.",
+  "initial_conditions": {
+    "outside_air_temperature": 74,
+    "outside_air_humidity": 50
+  },
+  "events": [
+    {
+      "time_seconds": 0,
+      "action": "set_fault",
+      "equipment": "ACI-SIM-AHU-1",
+      "alias": "automatic_high_static_trip",
+      "fault": "safety_bypass",
+      "description": "Bypass the independent automatic high-static safety to represent a failed or improperly commissioned device"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_fault",
+      "equipment": "ACI-SIM-AHU-1",
+      "alias": "duct_static_pressure",
+      "fault": "stuck_value",
+      "parameters": {
+        "value": 0.0
+      },
+      "description": "Fail the PID pressure signal low so the controller continues increasing fan speed"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-AHU-1",
+      "alias": "sa_fan_ss",
+      "value": true,
+      "description": "Command the AHU supply fan on"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-AHU-1",
+      "alias": "duct_static_pressure_setpoint",
+      "value": 2.0,
+      "description": "Raise the training-loop setpoint to the configured maximum"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-1",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-1"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-2",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-2"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-3",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-3"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-4",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-4"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-5",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-5"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-6",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-6"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-7",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-7"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-8",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-8"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-9",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-9"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-10",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-10"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-11",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-11"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-12",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-12"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-13",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-13"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-14",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-14"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-15",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-15"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-16",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-16"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-17",
+      "alias": "damper_position_command",
+      "value": 0,
+      "description": "Close VAV-17"
+    }
+  ],
+  "expected_results": [
+    "The PID sees a failed-low pressure signal and drives the supply-fan VFD toward maximum speed",
+    "The true physical duct pressure crosses 4.0 in. H2O without an automatic trip because that safety is deliberately bypassed",
+    "Above the simulator's representative 5.0 in. H2O training duct-class limit, the duct structural-failure alarm latches and the AHU graphic shows the ruptured duct state",
+    "The ruptured duct relieves downstream pressure while the uncontrolled PID continues demanding fan speed"
+  ],
+  "completion_criteria": [
+    "Student identifies both failed protections: the bad control sensor and the bypassed independent safety",
+    "Student explains why the manual-reset high-static switch must be independent of the PID sensor and controller"
+  ],
+  "instructor_notes": "The 5.0 in. H2O value is the simulator's representative training duct pressure-class limit, not a universal rupture pressure for every real duct system. Use Restart after the exercise to repair the latched damage and clear all forces/faults.",
+  "student_objectives": [
+    "Distinguish a control sensor from an independent hardwired safety",
+    "Observe how closed terminal dampers, a failed-low sensor, and a bypassed safety can combine into a catastrophic fault"
+  ]
+}
