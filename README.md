@@ -12,24 +12,28 @@ existing WebCTRL/EIKON programs (AHU, Chiller Manager, Boiler Manager,
 VAV-1, VAV-2, Simulation Manager) exactly as real field hardware would.
 
 **Status:** Phases 1–6a complete plus audit-and-hardening passes
-(2026-07-17 through 2026-07-24). The configured 329-point release passes
-**155 automated tests** and is verified live on the Windows bench service.
+(2026-07-17 through 2026-08-10). The configured 355-point release passes
+**171 automated tests**. The historical 329-point release was verified live
+on the Windows bench service before this additive HW-loop telemetry release.
 The historical 321-point baseline passed 129 tests. Core BACnet behavior has
 been verified against real
 cross-process BACnet/IP traffic on Windows, not assumed from unit tests alone. See
 [`SIMULATION_AUDIT.md`](SIMULATION_AUDIT.md) for the audit and
 [`HANDOFF.md`](HANDOFF.md) §0 for the session log.
 
-**Deployment state:** The current checkout contains **28 groups / 329 BACnet
-points**. This release preserves every identifier in the verified 321-point
-catalog and adds eight read-only AHU-1 sensor/safety objects: mixed-air
+**Deployment state:** The current checkout contains **28 groups / 355 BACnet
+points**. This release preserves every identifier in the verified 329-point
+catalog, including eight read-only AHU-1 sensor/safety objects: mixed-air
 humidity `AI:9005`, supply-air humidity `AI:9006`, cooling-coil entering-air
 temperature `AI:9007`, automatic high-static trip `BI:9044`, supply-duct
 structural failure `BI:9045`, automatic freezestat trip `BI:9046`,
 cooling-coil freeze condition `BI:9047`, and cooling-coil burst/flood alarm
 `BI:9048`. The existing duct-static actual remains `AV:9003`, but its
 published range is now 0.00-10.00 in. H2O so the training-only overpressure
-failure can be represented. The 329-point Windows-service cutover completed
+failure can be represented. It also adds 26 read-only HW-loop objects: eight
+common boiler-manager temperature/flow/pressure/load points and six unit
+temperature/flow/firing/pump-proof points on each boiler. The 329-point
+Windows-service cutover completed
 on 2026-07-24 with advancing 1x simulation ticks, live WebCTRL writes,
 confirmed COV recovery, zero blocked requests, and zero residual
 faults/forces/scenario after the acceptance exercises.
@@ -53,7 +57,7 @@ Evidence:
 
 ## What this actually does
 
-- Configures **329 BACnet objects** in the checkout under **one supervisory device**
+- Configures **355 BACnet objects** in the checkout under **one supervisory device**
   (`ACI-SIM-SUPERVISOR`, instance `242000`) on the bench simulator host
   `192.168.168.201`, listening on **UDP `47808`**. A transport-level
   `peer_allowlist` drops every BACnet request from any non-allowlisted

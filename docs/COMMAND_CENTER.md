@@ -29,10 +29,10 @@ All simulated points remain under the single BACnet supervisory device
 | AHU | 1 | Supply-air, fan, economizer, coil, and interlock behavior |
 | Exhaust fan | 1 | Enable, proof, VFD command, and pressure response |
 | VAV zones | 17 | Varied zone sizing, temperature, humidity, damper, airflow, and reheat behavior |
-| **Total** | **28** | **329 configured BACnet points** |
+| **Total** | **28** | **355 configured BACnet points** |
 
-The checkout and Windows service are verified at **28 equipment groups / 329
-BACnet points**. The 2026-07-24 cutover restored WebCTRL writes and confirmed
+The checkout contains **28 equipment groups / 355 BACnet points**. The
+historical 2026-07-24 329-point cutover restored WebCTRL writes and confirmed
 COV traffic with zero blocked requests; only WebCTRL discovery/mapping of the
 eight new read-only AHU safety/sensor points remains operator work.
 

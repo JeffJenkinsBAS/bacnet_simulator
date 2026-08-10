@@ -274,10 +274,24 @@ class ChwPlantManagerModel(EquipmentModel):
 @dataclass
 class BoilerPlantParameters:
     design_flow_per_boiler_gpm: float = 60.0
-    header_time_constant_seconds: float = 30.0
+    header_time_constant_seconds: float = 10.0
     idle_header_temp_f: float = 100.0
-    minimum_usable_supply_temp_f: float = 100.0
+    minimum_usable_supply_temp_f: float = 90.0
     full_capacity_supply_temp_f: float = 160.0
+    minimum_usable_flow_gpm: float = 1.0
+    pump_design_dp_psi: float = 8.0
+    pump_shutoff_dp_psi: float = 12.0
+    minimum_bypass_flow_per_running_pump_gpm: float = 3.0
+    loop_volume_gallons: float = 800.0
+    water_heat_capacity_btuper_gallon_f: float = 8.33
+    distribution_pump_heat_btuh: float = 6_000.0
+    circulator_pump_heat_btuh: float = 3_000.0
+    loop_ambient_ua_btuh_per_f: float = 900.0
+    outdoor_ambient_fraction: float = 0.10
+    mechanical_room_temp_offset_f: float = 3.0
+    minimum_loop_temp_f: float = 40.0
+    maximum_loop_temp_f: float = 210.0
+    maximum_header_drop_f: float = 40.0
 
 
 class BoilerManagerModel(EquipmentModel):
@@ -289,20 +303,32 @@ class BoilerManagerModel(EquipmentModel):
         registry: PointRegistry,
         boilers: list[BoilerModel],
         parameters: BoilerPlantParameters | None = None,
+        site_registry: PointRegistry | None = None,
     ):
         super().__init__(equipment_id, registry)
         self.boilers = boilers
         self.params = parameters or BoilerPlantParameters()
+        self.site_registry = site_registry
         self._hws_common = self.params.idle_header_temp_f
+        self._hwr_common = self.params.idle_header_temp_f
+        self._loop_mean_temp_f = self.params.idle_header_temp_f
         self._flow_common = 0.0
+        self._differential_pressure_psi = 0.0
+        self._pump_speed_pct = 0.0
+        self._heating_coils: list = []
+        self._coil_heat_btuh = 0.0
+        self._pump_heat_btuh = 0.0
+        self._ambient_loss_btuh = 0.0
+        self._boiler_heat_btuh = 0.0
+
+    def set_heating_coils(self, heating_coils: list) -> None:
+        """Attach AHU and terminal coils after graph construction."""
+        self._heating_coils = list(heating_coils)
 
     @property
     def distribution_units(self) -> list[BoilerModel]:
-        return [
-            boiler
-            for boiler in self.boilers
-            if boiler.proven and boiler.hw_pump_running
-        ]
+        # Distribution pumps circulate residual heat even with burners off.
+        return [boiler for boiler in self.boilers if boiler.hw_pump_running]
 
     @property
     def proven_unit_count(self) -> int:
@@ -313,12 +339,48 @@ class BoilerManagerModel(EquipmentModel):
         return self._hws_common
 
     @property
+    def return_temp_f(self) -> float:
+        return self._hwr_common
+
+    @property
     def flow_gpm(self) -> float:
         return self._flow_common
 
     @property
+    def differential_pressure_psi(self) -> float:
+        return self._differential_pressure_psi
+
+    @property
+    def heating_load_btuh(self) -> float:
+        return sum(
+            max(0.0, float(getattr(coil, "hot_water_coil_load_btuh", 0.0)))
+            for coil in self._heating_coils
+        )
+
+    @property
+    def loop_ambient_temp_f(self) -> float:
+        zone_temperatures = [
+            float(getattr(coil, "return_air_temp_f"))
+            for coil in self._heating_coils
+            if hasattr(coil, "return_air_temp_f")
+        ]
+        building_temp = sum(zone_temperatures) / len(zone_temperatures) if zone_temperatures else 72.0
+        outdoor_temp = building_temp
+        if self.site_registry is not None:
+            try:
+                outdoor_temp = float(self.site_registry.get("oa_temp"))
+            except KeyError:
+                pass
+        fraction = max(0.0, min(1.0, self.params.outdoor_ambient_fraction))
+        return (
+            (1.0 - fraction) * building_temp
+            + fraction * outdoor_temp
+            + self.params.mechanical_room_temp_offset_f
+        )
+
+    @property
     def heating_capacity_fraction(self) -> float:
-        if not self.distribution_units:
+        if self._flow_common < self.params.minimum_usable_flow_gpm:
             return 0.0
         temperature_span = (
             self.params.full_capacity_supply_temp_f
@@ -332,9 +394,18 @@ class BoilerManagerModel(EquipmentModel):
                 / max(temperature_span, 0.1),
             ),
         )
-        design_flow = self.params.design_flow_per_boiler_gpm * len(self.distribution_units)
-        flow_factor = max(0.0, min(1.0, self._flow_common / max(design_flow, 1.0)))
-        return temperature_factor * flow_factor
+        # A two-way system at low load legitimately carries only a few GPM;
+        # low total flow does not mean the open coil lacks capacity. Available
+        # differential pressure is the relevant delivery constraint.
+        pressure_factor = max(
+            0.0,
+            min(
+                1.0,
+                self._differential_pressure_psi
+                / max(self.params.pump_design_dp_psi, 0.1),
+            ),
+        )
+        return temperature_factor * pressure_factor
 
     @property
     def heating_available(self) -> bool:
@@ -347,22 +418,147 @@ class BoilerManagerModel(EquipmentModel):
             "proven_units": self.proven_unit_count,
             "distribution_units": len(self.distribution_units),
             "supply_temp_f": round(self.supply_temp_f, 2),
+            "return_temp_f": round(self.return_temp_f, 2),
             "flow_gpm": round(self.flow_gpm, 2),
+            "differential_pressure_psi": round(self.differential_pressure_psi, 2),
+            "pump_speed_pct": round(self._pump_speed_pct, 1),
+            "heating_load_btuh": round(self.heating_load_btuh, 1),
+            "boiler_heat_btuh": round(self._boiler_heat_btuh, 1),
+            "pump_heat_btuh": round(self._pump_heat_btuh, 1),
+            "ambient_loss_btuh": round(self._ambient_loss_btuh, 1),
+            "loop_mean_temp_f": round(self._loop_mean_temp_f, 2),
+            "loop_ambient_temp_f": round(self.loop_ambient_temp_f, 2),
         }
+
+    def _coil_flow_demand(self, differential_pressure_psi: float) -> float:
+        return sum(
+            max(0.0, float(coil.hot_water_flow_at_pressure(differential_pressure_psi)))
+            for coil in self._heating_coils
+            if hasattr(coil, "hot_water_flow_at_pressure")
+        )
+
+    def _solve_hydraulics(self, pumping: int) -> tuple[float, float]:
+        if pumping <= 0:
+            return 0.0, 0.0
+        # Preserve nominal fixed-speed behavior for a manager used by itself.
+        if not self._heating_coils:
+            return (
+                pumping * self.params.design_flow_per_boiler_gpm,
+                self.params.pump_design_dp_psi,
+            )
+
+        bypass = pumping * self.params.minimum_bypass_flow_per_running_pump_gpm
+        design_dp = self.params.pump_design_dp_psi
+        shutoff_dp = max(design_dp + 0.1, self.params.pump_shutoff_dp_psi)
+
+        def pump_capacity(dp: float) -> float:
+            head_fraction = max(0.0, (shutoff_dp - dp) / (shutoff_dp - design_dp))
+            return pumping * self.params.design_flow_per_boiler_gpm * (head_fraction ** 0.5)
+
+        def demand(dp: float) -> float:
+            return bypass + self._coil_flow_demand(dp)
+
+        low, high = 0.0, shutoff_dp
+        for _ in range(40):
+            mid = 0.5 * (low + high)
+            if pump_capacity(mid) > demand(mid):
+                low = mid
+            else:
+                high = mid
+        dp = 0.5 * (low + high)
+        return min(demand(dp), pump_capacity(dp)), dp
 
     def tick(self, dt_seconds: float) -> None:
         for n, boiler in enumerate(self.boilers, start=1):
             self.registry.set(f"boiler{n}_ok", 1.0 if boiler.proven else 0.0)
 
         distribution_units = self.distribution_units
-        if distribution_units:
-            target_hws = sum(boiler.hws_temp_f for boiler in distribution_units) / len(distribution_units)
-            target_flow = self.params.design_flow_per_boiler_gpm * len(distribution_units)
+        target_flow, target_dp = self._solve_hydraulics(len(distribution_units))
+        circulator_units = [boiler for boiler in self.boilers if boiler.circ_pump_running]
+
+        self._coil_heat_btuh = self.heating_load_btuh if target_flow > 0.0 else 0.0
+        self._pump_heat_btuh = (
+            len(distribution_units) * self.params.distribution_pump_heat_btuh
+            + len(circulator_units) * self.params.circulator_pump_heat_btuh
+        )
+        self._ambient_loss_btuh = self.params.loop_ambient_ua_btuh_per_f * (
+            self._loop_mean_temp_f - self.loop_ambient_temp_f
+        )
+        self._boiler_heat_btuh = sum(
+            max(0.0, boiler.heat_output_btuh) for boiler in self.boilers
+        )
+        net_heat_btuh = (
+            self._boiler_heat_btuh
+            + self._pump_heat_btuh
+            - self._coil_heat_btuh
+            - self._ambient_loss_btuh
+        )
+        loop_heat_capacity = max(
+            1.0,
+            self.params.loop_volume_gallons * self.params.water_heat_capacity_btuper_gallon_f,
+        )
+        self._loop_mean_temp_f += (
+            net_heat_btuh * max(0.0, dt_seconds) / 3600.0 / loop_heat_capacity
+        )
+        self._loop_mean_temp_f = max(
+            self.params.minimum_loop_temp_f,
+            min(self.params.maximum_loop_temp_f, self._loop_mean_temp_f),
+        )
+
+        if target_flow > 0.0:
+            load_side_heat = self._coil_heat_btuh + self._ambient_loss_btuh
+            header_drop = load_side_heat / max(500.0 * target_flow, 1.0)
+            header_drop = max(
+                -self.params.maximum_header_drop_f,
+                min(self.params.maximum_header_drop_f, header_drop),
+            )
+            target_hws = self._loop_mean_temp_f + 0.5 * header_drop
+            target_hwr = self._loop_mean_temp_f - 0.5 * header_drop
         else:
-            target_hws = self.params.idle_header_temp_f
-            target_flow = 0.0
+            target_hws = self._loop_mean_temp_f
+            target_hwr = self._loop_mean_temp_f
 
         tc = self.params.header_time_constant_seconds
         self._hws_common = self.approach(self._hws_common, target_hws, dt_seconds, tc)
+        self._hwr_common = self.approach(self._hwr_common, target_hwr, dt_seconds, tc)
         self._flow_common = self.approach(self._flow_common, target_flow, dt_seconds, tc)
+        self._differential_pressure_psi = self.approach(
+            self._differential_pressure_psi, target_dp, dt_seconds, tc
+        )
+        self._pump_speed_pct = self.approach(
+            self._pump_speed_pct,
+            100.0 if distribution_units else 0.0,
+            dt_seconds,
+            tc,
+        )
+
+        branch_units = circulator_units
+        branch_flow = (
+            min(
+                self.params.design_flow_per_boiler_gpm,
+                target_flow / max(len(branch_units), 1),
+            )
+            if branch_units else 0.0
+        )
+        branch_ids = {id(boiler) for boiler in branch_units}
+        for boiler in self.boilers:
+            boiler.set_hydronic_conditions(
+                self._hwr_common,
+                branch_flow if id(boiler) in branch_ids else 0.0,
+            )
+
+        aliases = set(self.registry.all_points())
+        telemetry = {
+            "hwr_temp_common": self._hwr_common,
+            "hws_flow_common": self._flow_common,
+            "hws_temp_common": self._hws_common,
+            "hw_diff_pressure": self._differential_pressure_psi,
+            "hw_loop_load": self._coil_heat_btuh,
+            "boiler_heat_output": self._boiler_heat_btuh,
+            "hw_pump_heat": self._pump_heat_btuh,
+            "hw_pump_speed_common": self._pump_speed_pct,
+        }
+        for alias, value in telemetry.items():
+            if alias in aliases:
+                self.registry.set(alias, value)
         self.runtime_seconds += dt_seconds

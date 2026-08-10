@@ -40,6 +40,16 @@ NEW_VAV_POINT_INSTANCES = {
     "cooling_max_airflow": 84,
     "damper_position_feedback": 85,
 }
+NEW_HW_POINT_ALIASES = {
+    "ACI-SIM-BOILER-MGR": {
+        "hwr_temp_common", "hws_flow_common", "hws_temp_common",
+        "hw_diff_pressure", "hw_loop_load", "boiler_heat_output",
+        "hw_pump_heat", "hw_pump_speed_common",
+    },
+    "ACI-SIM-BOILER-1": {"hwr_temp", "hws_temp", "boiler_flow", "firing_rate", "circ_pump_status", "hw_pump_status"},
+    "ACI-SIM-BOILER-2": {"hwr_temp", "hws_temp", "boiler_flow", "firing_rate", "circ_pump_status", "hw_pump_status"},
+    "ACI-SIM-BOILER-3": {"hwr_temp", "hws_temp", "boiler_flow", "firing_rate", "circ_pump_status", "hw_pump_status"},
+}
 
 
 def _groups() -> list[EquipmentGroupConfig]:
@@ -51,7 +61,7 @@ def _groups() -> list[EquipmentGroupConfig]:
     return groups
 
 
-def test_catalog_preserves_321_identifiers_and_adds_only_eight_ahu_points() -> None:
+def test_catalog_preserves_321_identifiers_and_adds_ahu_and_hw_telemetry() -> None:
     groups = _groups()
     rows: list[tuple[str, str, str, int]] = []
     existing_rows: list[tuple[str, str, str, int]] = []
@@ -69,13 +79,13 @@ def test_catalog_preserves_321_identifiers_and_adds_only_eight_ahu_points() -> N
             if (
                 group.group_id == "ACI-SIM-AHU-1"
                 and point.alias in NEW_AHU_POINT_INSTANCES
-            ):
+            ) or point.alias in NEW_HW_POINT_ALIASES.get(group.group_id, set()):
                 new_rows.append(row)
             else:
                 existing_rows.append(row)
 
     assert len(groups) == 28
-    assert len(rows) == 329
+    assert len(rows) == 355
     assert len(existing_rows) == 321
     serialized = "\n".join(
         "|".join(map(str, row))
@@ -92,7 +102,8 @@ def test_catalog_preserves_321_identifiers_and_adds_only_eight_ahu_points() -> N
         )
         for alias, (object_type, local_instance) in NEW_AHU_POINT_INSTANCES.items()
     ]
-    assert sorted(new_rows) == sorted(expected_new_rows)
+    assert len(new_rows) == 34
+    assert all(row in new_rows for row in expected_new_rows)
 
     humidity_rows = [
         row

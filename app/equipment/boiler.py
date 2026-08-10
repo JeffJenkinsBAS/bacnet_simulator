@@ -30,10 +30,16 @@ class BoilerParameters:
     purge_seconds: float = 6.0
     ignition_seconds: float = 4.0
     hws_setpoint_f: float = 180.0
-    hws_time_constant_seconds: float = 90.0
+    hws_time_constant_seconds: float = 12.0
     pump_start_delay_seconds: float = 3.0
     minimum_hws_setpoint_f: float = 100.0
     maximum_hws_setpoint_f: float = 200.0
+    nominal_output_capacity_btuh: float = 600_000.0
+    minimum_firing_fraction: float = 0.20
+    firing_time_constant_seconds: float = 15.0
+    firing_deadband_f: float = 1.0
+    maximum_leaving_temp_above_setpoint_f: float = 5.0
+    standby_temp_f: float = 100.0
 
 
 class BoilerModel(EquipmentModel):
@@ -56,7 +62,13 @@ class BoilerModel(EquipmentModel):
 
         self._enabled_seconds = 0.0
         self._proven = False
-        self._hws_temp = 100.0  # internal only, not published -- see module docstring
+        self._hws_temp = self.params.standby_temp_f
+        self._hwr_temp = self.params.standby_temp_f
+        self._hydronic_flow_gpm = 0.0
+        self._hydronic_conditions_configured = False
+        self._firing_fraction = 0.0
+        self._heat_output_btuh = 0.0
+        self._active_setpoint_f = self.params.hws_setpoint_f
         self._circ_pump_running = False
         self._hw_pump_running = False
         self._circ_pump_frac = 0.0
@@ -70,6 +82,32 @@ class BoilerModel(EquipmentModel):
     @property
     def hws_temp_f(self) -> float:
         return self._hws_temp
+
+    @property
+    def hwr_temp_f(self) -> float:
+        return self._hwr_temp
+
+    @property
+    def flow_gpm(self) -> float:
+        return self._hydronic_flow_gpm
+
+    @property
+    def firing_rate_pct(self) -> float:
+        return 100.0 * self._firing_fraction
+
+    @property
+    def heat_output_btuh(self) -> float:
+        return self._heat_output_btuh
+
+    @property
+    def active_setpoint_f(self) -> float:
+        return self._active_setpoint_f
+
+    def set_hydronic_conditions(self, return_temp_f: float, flow_gpm: float) -> None:
+        """Receive common-return temperature and this boiler's branch flow."""
+        self._hwr_temp = float(return_temp_f)
+        self._hydronic_flow_gpm = max(0.0, float(flow_gpm))
+        self._hydronic_conditions_configured = True
 
     @property
     def hw_pump_running(self) -> bool:
@@ -120,9 +158,84 @@ class BoilerModel(EquipmentModel):
             self.params.minimum_hws_setpoint_f,
             min(self.params.maximum_hws_setpoint_f, setpoint),
         )
-        target = setpoint if self._proven else 100.0
-        self._hws_temp = self.approach(self._hws_temp, target, dt_seconds, self.params.hws_time_constant_seconds)
+        self._active_setpoint_f = setpoint
+
+        # In the integrated graph, firing is load-driven: the boiler must
+        # replace 500 * GPM * delta-T, and cannot add useful heat without
+        # circulation. Standalone tests retain the legacy warm-up response.
+        if self._hydronic_conditions_configured:
+            flow = self._hydronic_flow_gpm
+            required_btuh = 500.0 * flow * max(0.0, setpoint - self._hwr_temp)
+            if not self._proven or flow <= 0.01 or self._hws_temp > setpoint + self.params.firing_deadband_f:
+                target_firing = 0.0
+            else:
+                target_firing = min(
+                    1.0,
+                    max(
+                        self.params.minimum_firing_fraction,
+                        required_btuh / max(self.params.nominal_output_capacity_btuh, 1.0),
+                    ),
+                )
+            self._firing_fraction = self.approach(
+                self._firing_fraction,
+                target_firing,
+                dt_seconds,
+                self.params.firing_time_constant_seconds,
+            )
+            useful_heat = self._firing_fraction * self.params.nominal_output_capacity_btuh
+            maximum_leaving = setpoint + self.params.maximum_leaving_temp_above_setpoint_f
+            useful_heat = min(
+                useful_heat,
+                500.0 * flow * max(0.0, maximum_leaving - self._hwr_temp),
+            ) if flow > 0.01 else 0.0
+            self._heat_output_btuh = useful_heat
+            target = (
+                self._hwr_temp + useful_heat / max(500.0 * flow, 1.0)
+                if flow > 0.01
+                else self._hwr_temp
+            )
+        else:
+            self._firing_fraction = self.approach(
+                self._firing_fraction,
+                1.0 if self._proven else 0.0,
+                dt_seconds,
+                self.params.firing_time_constant_seconds,
+            )
+            self._heat_output_btuh = 0.0
+            target = setpoint if self._proven else self.params.standby_temp_f
+
+        self._hws_temp = self.approach(
+            self._hws_temp,
+            target,
+            dt_seconds,
+            self.params.hws_time_constant_seconds,
+        )
 
         self.registry.set("boiler_ok", 1.0 if self._proven else 0.0)
+        aliases = set(self.registry.all_points())
+        telemetry = {
+            "hwr_temp": self._hwr_temp,
+            "hws_temp": self._hws_temp,
+            "boiler_flow": self._hydronic_flow_gpm,
+            "firing_rate": self.firing_rate_pct,
+            "circ_pump_status": 1.0 if self._circ_pump_running else 0.0,
+            "hw_pump_status": 1.0 if self._hw_pump_running else 0.0,
+        }
+        for alias, value in telemetry.items():
+            if alias in aliases:
+                self.registry.set(alias, value)
 
         self.runtime_seconds += dt_seconds
+
+    def operating_snapshot(self) -> dict:
+        return {
+            "proven": self.proven,
+            "circ_pump_running": self.circ_pump_running,
+            "hw_pump_running": self.hw_pump_running,
+            "hwr_temp_f": round(self.hwr_temp_f, 2),
+            "hws_temp_f": round(self.hws_temp_f, 2),
+            "flow_gpm": round(self.flow_gpm, 2),
+            "firing_rate_pct": round(self.firing_rate_pct, 2),
+            "heat_output_btuh": round(self.heat_output_btuh, 1),
+            "setpoint_f": round(self.active_setpoint_f, 2),
+        }

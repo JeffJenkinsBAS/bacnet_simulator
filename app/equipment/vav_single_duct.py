@@ -59,6 +59,10 @@ class VavParameters:
     max_reheat_rise_f: float = 40.0  # rise at occupied minimum airflow and 100% valve
     thermal_time_constant_seconds: float = 30.0
     hot_water_supply_temp_f: float = 180.0  # standalone/unit-test fallback
+    hot_water_valve_time_constant_seconds: float = 30.0
+    hot_water_valve_rangeability: float = 20.0
+    hot_water_design_delta_f: float = 20.0
+    hot_water_design_dp_psi: float = 4.0
     maximum_discharge_temp_f: float = 95.0
     duct_pickup_f: float = 1.0
     zone_heating_setpoint_f: float = 70.0
@@ -88,6 +92,10 @@ class VavParameters:
             "design_static_pressure_inwc",
             "damper_time_constant_seconds",
             "thermal_time_constant_seconds",
+            "hot_water_valve_time_constant_seconds",
+            "hot_water_valve_rangeability",
+            "hot_water_design_delta_f",
+            "hot_water_design_dp_psi",
             "floor_area_sqft",
             "ceiling_height_ft",
             "zone_thermal_capacitance_btuper_f",
@@ -147,6 +155,10 @@ class SingleDuctVavModel(EquipmentModel):
         self._airflow_cfm = 0.0
         self._discharge_temp_f = 55.0
         self._air_mode = "off"
+        self._hot_water_valve_fraction = 0.0
+        self._hot_water_flow_gpm = 0.0
+        self._hot_water_coil_load_btuh = 0.0
+        self._hot_water_return_temp_f = self.params.hot_water_supply_temp_f
         point_aliases = set(self.registry.all_points())
         self._has_extended_airflow_points = {
             "heating_min_airflow",
@@ -255,6 +267,39 @@ class SingleDuctVavModel(EquipmentModel):
         # conserved return-flow weight for each space.
         return self.airflow_cfm
 
+    @property
+    def hot_water_design_load_btuh(self) -> float:
+        return (
+            1.08
+            * self.params.occupied_minimum_airflow_cfm
+            * self.params.max_reheat_rise_f
+        )
+
+    @property
+    def hot_water_design_flow_gpm(self) -> float:
+        return self.hot_water_design_load_btuh / max(
+            500.0 * self.params.hot_water_design_delta_f,
+            1.0,
+        )
+
+    def hot_water_flow_at_pressure(self, differential_pressure_psi: float) -> float:
+        """Two-way equal-percentage valve flow at the available coil DP."""
+        if self._hot_water_valve_fraction <= 0.001:
+            return 0.0
+        rangeability = self.params.hot_water_valve_rangeability
+        characteristic = (
+            rangeability ** self._hot_water_valve_fraction - 1.0
+        ) / (rangeability - 1.0)
+        pressure_factor = sqrt(
+            max(0.0, differential_pressure_psi)
+            / self.params.hot_water_design_dp_psi
+        )
+        return self.hot_water_design_flow_gpm * characteristic * pressure_factor
+
+    @property
+    def hot_water_coil_load_btuh(self) -> float:
+        return self._hot_water_coil_load_btuh
+
     def _zone_temperature_f(self) -> tuple[float, str]:
         source = (
             "simulated-zone-physical"
@@ -356,6 +401,10 @@ class SingleDuctVavModel(EquipmentModel):
             "damper_command_pct": round(damper_command_pct, 2),
             "damper_position_feedback_pct": round(damper_feedback_pct, 2),
             "reheat_valve_pct": round(valve_pct, 2),
+            "reheat_valve_effective_pct": round(100.0 * self._hot_water_valve_fraction, 2),
+            "hot_water_flow_gpm": round(self._hot_water_flow_gpm, 3),
+            "hot_water_coil_load_btuh": round(self._hot_water_coil_load_btuh, 1),
+            "hot_water_return_temp_f": round(self._hot_water_return_temp_f, 2),
             "space_name": self.params.space_name,
             "zone_area_sqft": round(self.params.floor_area_sqft, 1),
             "design_max_airflow_cfm": round(self.params.max_airflow_cfm, 1),
@@ -410,6 +459,12 @@ class SingleDuctVavModel(EquipmentModel):
         valve_pct = self.registry.get_commanded("hw_valve_command") or 0.0
         damper_pct = max(0.0, min(100.0, damper_pct))
         valve_pct = max(0.0, min(100.0, valve_pct))
+        self._hot_water_valve_fraction = self.approach(
+            self._hot_water_valve_fraction,
+            valve_pct / 100.0,
+            dt_seconds,
+            self.params.hot_water_valve_time_constant_seconds,
+        )
         self._damper_position_feedback_pct = damper_pct
 
         if self._has_extended_airflow_points:
@@ -479,33 +534,59 @@ class SingleDuctVavModel(EquipmentModel):
 
         # --- Discharge temp: actual AHU air plus plant-dependent terminal reheat ---
         zone_temp_f, _ = self._zone_temperature_f()
+        if self.boiler_plant_model is not None:
+            hot_water_temp = float(self.boiler_plant_model.supply_temp_f)
+            hot_water_dp = float(
+                getattr(
+                    self.boiler_plant_model,
+                    "differential_pressure_psi",
+                    self.params.hot_water_design_dp_psi,
+                )
+            )
+        else:
+            hot_water_temp = self.params.hot_water_supply_temp_f
+            hot_water_dp = self.params.hot_water_design_dp_psi
+        self._hot_water_flow_gpm = (
+            self.hot_water_flow_at_pressure(hot_water_dp)
+            if self.heating_available
+            else 0.0
+        )
+        self._hot_water_coil_load_btuh = 0.0
+        self._hot_water_return_temp_f = hot_water_temp
+
         if self._airflow_cfm < self.params.min_airflow_floor_cfm:
             # With no meaningful air movement the sensor slowly equalizes with
             # the room/duct rather than reporting fictitious hot discharge.
             target_discharge_temp = zone_temp_f
         else:
             target_discharge_temp = supply_air_temp + self.params.duct_pickup_f
-            if valve_pct > 0.0 and self.heating_available:
+            if self._hot_water_flow_gpm > 0.0 and self.heating_available:
                 effective_airflow = max(self._airflow_cfm, self.params.min_airflow_floor_cfm)
-                reference_airflow = max(
-                    self.params.occupied_minimum_airflow_cfm,
-                    self.params.min_airflow_floor_cfm,
+                entering_air_temp = target_discharge_temp
+                water_side_capacity = (
+                    500.0
+                    * self._hot_water_flow_gpm
+                    * self.params.hot_water_design_delta_f
                 )
-                target_rise = (
-                    (valve_pct / 100.0)
-                    * self.heating_capacity_fraction
-                    * self.params.max_reheat_rise_f
-                    * (reference_airflow / effective_airflow)
+                air_side_capacity = 1.08 * effective_airflow * max(
+                    0.0,
+                    min(hot_water_temp - 10.0, self.params.maximum_discharge_temp_f)
+                    - entering_air_temp,
                 )
-                hot_water_temp = (
-                    self.boiler_plant_model.supply_temp_f
-                    if self.boiler_plant_model is not None
-                    else self.params.hot_water_supply_temp_f
+                self._hot_water_coil_load_btuh = min(
+                    self.hot_water_design_load_btuh,
+                    water_side_capacity,
+                    air_side_capacity,
                 )
                 target_discharge_temp = min(
-                    target_discharge_temp + target_rise,
+                    entering_air_temp
+                    + self._hot_water_coil_load_btuh / max(1.08 * effective_airflow, 1.0),
                     hot_water_temp - 10.0,
                     self.params.maximum_discharge_temp_f,
+                )
+                self._hot_water_return_temp_f = hot_water_temp - (
+                    self._hot_water_coil_load_btuh
+                    / max(500.0 * self._hot_water_flow_gpm, 1.0)
                 )
         self._discharge_temp_f = self.approach(
             self._discharge_temp_f, target_discharge_temp, dt_seconds, self.params.thermal_time_constant_seconds

@@ -182,6 +182,15 @@ async def test_start_command_alone_uses_default_enable_and_proves_status() -> No
     assert registry.view("ACI-SIM-CHILLER-1").get("chiller_status") == 1.0
     assert registry.view("ACI-SIM-CHW-PLANT").get("chiller1_ok") == 1.0
 
+    # An explicit inactive S/S write drops proof immediately. This guards
+    # against the simulator latching a prior Start after WebCTRL sends Stop.
+    await _write(registry, "ACI-SIM-CHILLER-1", "chiller_ss", False)
+    chiller.tick(1.0)
+    manager.tick(1.0)
+    assert not chiller.proven
+    assert registry.view("ACI-SIM-CHILLER-1").get("chiller_status") == 0.0
+    assert registry.view("ACI-SIM-CHW-PLANT").get("chiller1_ok") == 0.0
+
 
 @pytest.mark.asyncio
 async def test_running_chiller_with_no_coil_load_has_near_zero_delta_t() -> None:

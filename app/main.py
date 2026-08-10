@@ -155,7 +155,12 @@ def build_equipment(registry: PointRegistry, fault_manager: FaultManager) -> lis
         chillers,
         site_registry=site_view,
     )
-    boiler_manager = BoilerManagerModel("ACI-SIM-BOILER-MGR", boiler_mgr_view, boilers)
+    boiler_manager = BoilerManagerModel(
+        "ACI-SIM-BOILER-MGR",
+        boiler_mgr_view,
+        boilers,
+        site_registry=site_view,
+    )
 
     ahu = AhuModel(
         "ACI-SIM-AHU-1",
@@ -217,6 +222,9 @@ def build_equipment(registry: PointRegistry, fault_manager: FaultManager) -> lis
     # the common-duct resistance seen by its static-pressure sensor. The VAVs
     # then consume the AHU's newly calculated pressure later in the same tick.
     ahu.set_vav_models(vavs)
+    # Every hot-water coil contributes its water demand and air-side heat
+    # transfer to the common distribution-loop pressure/energy balance.
+    boiler_manager.set_heating_coils([ahu, *vavs])
 
     # Physical dependency/tick order: ambient -> plants -> loop headers ->
     # air handler -> pressure trim -> terminal units/zones.

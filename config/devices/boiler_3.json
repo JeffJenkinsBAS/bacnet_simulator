@@ -17,6 +17,40 @@
       "update_interval_seconds": 1
     },
     {
+      "alias": "hwr_temp", "object_type": "analog-input", "object_instance": 1,
+      "object_name": "BOILER-3 HWR Temp", "description": "Boiler 3 entering hot-water temperature",
+      "units": "degrees-fahrenheit", "signal_direction": "sim_to_webctrl", "writable": false,
+      "initial_value": 100.0, "minimum": 40.0, "maximum": 220.0, "update_interval_seconds": 1, "cov_increment": 0.5
+    },
+    {
+      "alias": "hws_temp", "object_type": "analog-input", "object_instance": 2,
+      "object_name": "BOILER-3 HWS Temp", "description": "Boiler 3 leaving hot-water temperature",
+      "units": "degrees-fahrenheit", "signal_direction": "sim_to_webctrl", "writable": false,
+      "initial_value": 100.0, "minimum": 40.0, "maximum": 220.0, "update_interval_seconds": 1, "cov_increment": 0.5
+    },
+    {
+      "alias": "boiler_flow", "object_type": "analog-input", "object_instance": 3,
+      "object_name": "BOILER-3 HW Flow", "description": "Boiler 3 branch hot-water flow",
+      "units": "gallons-per-minute", "signal_direction": "sim_to_webctrl", "writable": false,
+      "initial_value": 0.0, "minimum": 0.0, "maximum": 100.0, "update_interval_seconds": 1, "cov_increment": 0.5
+    },
+    {
+      "alias": "firing_rate", "object_type": "analog-input", "object_instance": 4,
+      "object_name": "BOILER-3 Firing Rate", "description": "Boiler 3 modulating firing-rate feedback",
+      "units": "percent", "signal_direction": "sim_to_webctrl", "writable": false,
+      "initial_value": 0.0, "minimum": 0.0, "maximum": 100.0, "update_interval_seconds": 1, "cov_increment": 1.0
+    },
+    {
+      "alias": "circ_pump_status", "object_type": "binary-input", "object_instance": 41,
+      "object_name": "BOILER-3 Circ Pump Status", "description": "Boiler 3 circulator pump proof",
+      "units": "no-units", "signal_direction": "sim_to_webctrl", "writable": false, "initial_value": 0, "update_interval_seconds": 1
+    },
+    {
+      "alias": "hw_pump_status", "object_type": "binary-input", "object_instance": 42,
+      "object_name": "BOILER-3 HW Pump Status", "description": "Boiler 3 distribution pump proof",
+      "units": "no-units", "signal_direction": "sim_to_webctrl", "writable": false, "initial_value": 0, "update_interval_seconds": 1
+    },
+    {
       "alias": "boiler_ss",
       "object_type": "binary-output",
       "object_instance": 60,

@@ -36,6 +36,8 @@ _UNITS_MAP = {
     "percent": EngineeringUnits.percent,
     "cubic-feet-per-minute": EngineeringUnits.cubicFeetPerMinute,
     "gallons-per-minute": EngineeringUnits.usGallonsPerMinute,
+    "btus-per-hour": EngineeringUnits.btusPerHour,
+    "pounds-force-per-square-inch": EngineeringUnits.poundsForcePerSquareInch,
     "inches-of-water": EngineeringUnits.inchesOfWater,
     "no-units": EngineeringUnits.noUnits,
 }

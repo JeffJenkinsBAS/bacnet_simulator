@@ -55,6 +55,8 @@ class AhuParameters:
     minimum_outdoor_air_fraction: float = 0.15
     economizer_enthalpy_enable_delta_btu_lb: float = -1.0
     economizer_enthalpy_disable_delta_btu_lb: float = 1.0
+    economizer_warm_humid_temp_limit_f: float = 60.0
+    economizer_warm_humid_rh_limit_pct: float = 35.0
     economizer_oa_above_ra_enable_limit_f: float = 9.0
     economizer_oa_above_ra_disable_limit_f: float = 10.0
     economizer_fixed_high_limit_f: float = 75.0
@@ -77,6 +79,11 @@ class AhuParameters:
     # actuator command. 20.5 F of design rise makes a 50% valve command
     # settle near 85 F SAT at normal 70-72 F mixed/return conditions.
     heating_coil_design_rise_f: float = 20.5
+    heating_coil_design_flow_gpm: float = 18.0
+    preheat_coil_design_flow_gpm: float = 12.0
+    hot_water_design_delta_f: float = 20.0
+    hot_water_design_dp_psi: float = 4.0
+    hot_water_valve_rangeability: float = 20.0
     fan_heat_f: float = 2.0
     minimum_sa_temp_setpoint_f: float = 45.0
     maximum_sa_temp_setpoint_f: float = 95.0
@@ -180,6 +187,7 @@ class AhuModel(EquipmentModel):
         self._economizer_ra_enthalpy_btu_lb = 0.0
         self._economizer_enthalpy_delta_btu_lb = 0.0
         self._economizer_oa_dew_point_f = 0.0
+        self._economizer_warm_humid_lockout = False
         self._economizer_mixed_air_low_limit_active = False
         self._economizer_sensor_fallback_reason = ""
         self._economizer_limiting_reason = "fan-off"
@@ -236,6 +244,9 @@ class AhuModel(EquipmentModel):
         self._cooling_coil_load_btuh = 0.0
         self._cooling_coil_chw_flow_gpm = 0.0
         self._cooling_coil_chwr_temp_f = 55.0
+        self._hot_water_coil_load_btuh = 0.0
+        self._hot_water_flow_gpm = 0.0
+        self._hot_water_return_temp_f = 100.0
         point_aliases = set(self.registry.all_points())
         self._has_duct_static_points = {
             "duct_static_pressure_setpoint",
@@ -339,6 +350,32 @@ class AhuModel(EquipmentModel):
         """Signed heat entering CHW; positive means the building warms water."""
         return self._cooling_coil_load_btuh
 
+    def _hot_water_valve_characteristic(self, fraction: float) -> float:
+        fraction = max(0.0, min(1.0, fraction))
+        rangeability = max(1.01, self.params.hot_water_valve_rangeability)
+        return (rangeability ** fraction - 1.0) / (rangeability - 1.0)
+
+    def hot_water_flow_at_pressure(self, differential_pressure_psi: float) -> float:
+        """Combined preheat and heating-coil two-way valve demand."""
+        preheat_fraction = max(
+            0.0,
+            min(1.0, (self.registry.get_commanded("preheat_valve") or 0.0) / 100.0),
+        )
+        pressure_factor = (
+            max(0.0, differential_pressure_psi)
+            / max(self.params.hot_water_design_dp_psi, 0.1)
+        ) ** 0.5
+        return pressure_factor * (
+            self.params.heating_coil_design_flow_gpm
+            * self._heating_valve_fraction
+            + self.params.preheat_coil_design_flow_gpm
+            * preheat_fraction
+        )
+
+    @property
+    def hot_water_coil_load_btuh(self) -> float:
+        return self._hot_water_coil_load_btuh
+
     @property
     def return_air_temp_f(self) -> float:
         """Common return-air temperature used as the plant-room ambient proxy."""
@@ -438,6 +475,22 @@ class AhuModel(EquipmentModel):
             oa_temp_f,
             oa_humidity_pct,
         )
+        warm_humid_lockout = bool(
+            oa_temp_reliable
+            and oa_humidity_reliable
+            and oa_temp_f
+            > self.params.economizer_warm_humid_temp_limit_f
+            and oa_humidity_pct
+            > self.params.economizer_warm_humid_rh_limit_pct
+        )
+        self._economizer_warm_humid_lockout = warm_humid_lockout
+        weather_lockout_reason = (
+            "outdoor air above "
+            f"{self.params.economizer_warm_humid_temp_limit_f:g} F and "
+            f"{self.params.economizer_warm_humid_rh_limit_pct:g}% RH"
+            if warm_humid_lockout
+            else ""
+        )
 
         available = self._economizer_free_cooling_available
         method = "unavailable"
@@ -451,7 +504,8 @@ class AhuModel(EquipmentModel):
             method = "dual-enthalpy"
             if available:
                 available = not (
-                    self._economizer_enthalpy_delta_btu_lb
+                    warm_humid_lockout
+                    or self._economizer_enthalpy_delta_btu_lb
                     >= self.params.economizer_enthalpy_disable_delta_btu_lb
                     or oa_temp_f
                     >= self._ra_temp
@@ -462,7 +516,8 @@ class AhuModel(EquipmentModel):
                 )
             else:
                 available = (
-                    self._economizer_enthalpy_delta_btu_lb
+                    not warm_humid_lockout
+                    and self._economizer_enthalpy_delta_btu_lb
                     <= self.params.economizer_enthalpy_enable_delta_btu_lb
                     and oa_temp_f
                     <= self._ra_temp
@@ -483,14 +538,16 @@ class AhuModel(EquipmentModel):
             )
             if available:
                 available = not (
-                    self._economizer_oa_enthalpy_btu_lb >= disable_limit
+                    warm_humid_lockout
+                    or self._economizer_oa_enthalpy_btu_lb >= disable_limit
                     or oa_temp_f > self.params.economizer_fixed_high_limit_f
                     or self._economizer_oa_dew_point_f
                     >= self.params.economizer_dew_point_disable_limit_f
                 )
             else:
                 available = (
-                    self._economizer_oa_enthalpy_btu_lb <= enable_limit
+                    not warm_humid_lockout
+                    and self._economizer_oa_enthalpy_btu_lb <= enable_limit
                     and oa_temp_f
                     <= self.params.economizer_fixed_high_limit_f
                     and self._economizer_oa_dew_point_f
@@ -576,7 +633,11 @@ class AhuModel(EquipmentModel):
                 if method == "unavailable"
                 else "unavailable-weather"
             )
-            limiting_reason = fallback_reason or "outdoor air not suitable"
+            limiting_reason = (
+                fallback_reason
+                or weather_lockout_reason
+                or "outdoor air not suitable"
+            )
         elif self._economizer_cooling_beneficial:
             state = "economizing"
             limiting_reason = ""
@@ -1435,6 +1496,15 @@ class AhuModel(EquipmentModel):
                 self._cooling_coil_chwr_temp_f,
                 2,
             ),
+            "hot_water_flow_gpm": round(self._hot_water_flow_gpm, 2),
+            "hot_water_coil_load_btuh": round(
+                self._hot_water_coil_load_btuh,
+                1,
+            ),
+            "hot_water_return_temp_f": round(
+                self._hot_water_return_temp_f,
+                2,
+            ),
             "cooling_coil_freeze_temp_f": (
                 self.params.cooling_coil_freeze_temp_f
             ),
@@ -1554,6 +1624,7 @@ class AhuModel(EquipmentModel):
                 self._economizer_oa_dew_point_f,
                 2,
             ),
+            "warm_humid_lockout": self._economizer_warm_humid_lockout,
             "mixed_air_low_limit_active": (
                 self._economizer_mixed_air_low_limit_active
             ),
@@ -1599,6 +1670,9 @@ class AhuModel(EquipmentModel):
                 self._cooling_coil_chwr_temp_f,
                 2,
             ),
+            "hot_water_flow_gpm": round(self._hot_water_flow_gpm, 2),
+            "hot_water_coil_load_btuh": round(self._hot_water_coil_load_btuh, 1),
+            "hot_water_return_temp_f": round(self._hot_water_return_temp_f, 2),
             "supply_air_temp_f": round(self._sa_temp, 2),
             "supply_air_humidity_pct": round(
                 rh_from_humidity_ratio(
@@ -2003,13 +2077,67 @@ class AhuModel(EquipmentModel):
             and self.heating_capacity_fraction > 0.0
             and self._ma_temp < self.params.preheat_leaving_temp_f
         )
+        hot_water_temp = (
+            float(self.boiler_plant_model.supply_temp_f)
+            if self.boiler_plant_model is not None
+            else 180.0
+        )
+        hot_water_dp = (
+            float(
+                getattr(
+                    self.boiler_plant_model,
+                    "differential_pressure_psi",
+                    self.params.hot_water_design_dp_psi,
+                )
+            )
+            if self.boiler_plant_model is not None
+            else self.params.hot_water_design_dp_psi
+        )
+        pressure_factor = (
+            max(0.0, hot_water_dp) / max(self.params.hot_water_design_dp_psi, 0.1)
+        ) ** 0.5
+        preheat_flow_gpm = (
+            self.params.preheat_coil_design_flow_gpm
+            * (preheat_pct / 100.0)
+            * pressure_factor
+            if self.hot_water_available else 0.0
+        )
+        heating_flow_gpm = (
+            self.params.heating_coil_design_flow_gpm
+            * self._heating_valve_fraction
+            * pressure_factor
+            if self.hot_water_available else 0.0
+        )
+        self._hot_water_flow_gpm = preheat_flow_gpm + heating_flow_gpm
+        self._hot_water_coil_load_btuh = 0.0
+        self._hot_water_return_temp_f = hot_water_temp
         preheat_target = self._ma_temp
         if preheat_active:
-            preheat_target = self._ma_temp + (
+            requested_preheat_target = self._ma_temp + (
                 (preheat_pct / 100.0)
                 * self.heating_capacity_fraction
                 * (self.params.preheat_leaving_temp_f - self._ma_temp)
             )
+            requested_preheat_btuh = max(
+                0.0,
+                1.08 * self._total_supply_airflow_cfm
+                * (requested_preheat_target - self._ma_temp),
+            )
+            if self._total_supply_airflow_cfm <= 1.0:
+                # Standalone AHU tests have no terminal graph; retain the
+                # historical leaving-air response without inventing load.
+                preheat_btuh = 0.0
+                preheat_target = requested_preheat_target
+            else:
+                preheat_btuh = min(
+                    requested_preheat_btuh,
+                    500.0 * preheat_flow_gpm * self.params.hot_water_design_delta_f,
+                )
+                preheat_target = self._ma_temp + preheat_btuh / max(
+                    1.08 * self._total_supply_airflow_cfm,
+                    1.0,
+                )
+            self._hot_water_coil_load_btuh += preheat_btuh
         self._cooling_coil_entering_air_temp = self.approach(
             self._cooling_coil_entering_air_temp,
             preheat_target,
@@ -2154,23 +2282,42 @@ class AhuModel(EquipmentModel):
 
             heating_output = self._heating_valve_fraction * heating_capacity
             if heating_output > 0.0:
-                hot_water_temp = (
-                    self.boiler_plant_model.supply_temp_f
-                    if self.boiler_plant_model is not None
-                    else 180.0
-                )
                 heating_limit = min(
                     self.params.maximum_heating_supply_temp_f,
                     hot_water_temp - 10.0,
                 )
-                target_sa = min(
+                heating_enter_temp = target_sa
+                requested_heating_target = min(
                     target_sa
                     + heating_output * self.params.heating_coil_design_rise_f,
                     heating_limit,
                 )
+                requested_heating_btuh = max(
+                    0.0,
+                    1.08 * self._total_supply_airflow_cfm
+                    * (requested_heating_target - heating_enter_temp),
+                )
+                heating_btuh = min(
+                    requested_heating_btuh,
+                    500.0 * heating_flow_gpm * self.params.hot_water_design_delta_f,
+                )
+                if self._total_supply_airflow_cfm <= 1.0:
+                    heating_btuh = 0.0
+                    target_sa = requested_heating_target
+                else:
+                    target_sa = heating_enter_temp + heating_btuh / max(
+                        1.08 * self._total_supply_airflow_cfm,
+                        1.0,
+                    )
+                self._hot_water_coil_load_btuh += heating_btuh
                 self._heating_active = (
-                    heating_output * self.params.heating_coil_design_rise_f
-                    >= 1.0
+                    target_sa - heating_enter_temp >= 1.0
+                )
+
+            if self._hot_water_flow_gpm > 0.0:
+                self._hot_water_return_temp_f = hot_water_temp - (
+                    self._hot_water_coil_load_btuh
+                    / max(500.0 * self._hot_water_flow_gpm, 1.0)
                 )
 
             # Fan heat is added after the coils.

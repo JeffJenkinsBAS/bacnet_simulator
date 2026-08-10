@@ -142,6 +142,24 @@ are not omitted from AHU return air.
   change does not teleport the supply temperature.
 - Hot-water supply reset is constrained to **100-200 degrees F**; the
   conventional training default is **180 degrees F**.
+- The common HW loop contains **800 gallons** of modeled water. Boiler heat
+  and pump work add energy; AHU/VAV coil output and mechanical-room/piping
+  losses remove it. HWS and HWR therefore coast after shutdown and separate
+  by `load / (500 x GPM)` whenever water is circulating.
+- Each fixed-speed distribution pump is represented by a **60 GPM at 8 psi**
+  design point and **12 psi** shutoff head. The manager solves the operating
+  point against all open two-way coil valves plus 3 GPM minimum bypass per
+  running pump. Valve closure lowers flow and raises differential pressure.
+  Distribution pumps add 6,000 Btu/h and boiler circulators add 3,000 Btu/h
+  to the water, including while the burners are off.
+- Each boiler has **600,000 Btu/h** nominal useful output and 20% minimum
+  firing. Purge, ignition, flow proof, firing-rate lag, return temperature,
+  branch flow, and the 180-degree-F leaving-water target all participate in
+  modulation; a start command without circulator proof cannot establish run
+  status or heat output.
+- AHU preheat/heating valves and all 17 VAV reheat valves create water-flow
+  demand at the solved loop pressure. Their air-side Btu/h is returned to the
+  plant as load and produces a matching water-side temperature drop.
 - The AHU heating coil uses a characterized-valve approximation and a
   **20.5-degree F design rise** at full available hot-water capacity. At
   approximately 70-degree F outside air, 15% minimum OA, and 72-degree F
@@ -203,9 +221,11 @@ flow because per-zone exhaust/transfer-air paths are not configured.
 The default changeover method is differential (dual) enthalpy. Outdoor-air
 enthalpy must be at least 1 Btu/lb below return-air enthalpy to enable free
 cooling. The state holds through a dead band and disables when OA enthalpy is
-1 Btu/lb above RA. A 75-degree-F dry-bulb ceiling and 55/57-degree-F OA
-dew-point enable/disable limits prevent warm or humid air from being treated
-as free cooling.
+1 Btu/lb above RA. Differential enthalpy is necessary but not sufficient:
+when outdoor dry bulb is above 60 degrees F **and** outdoor RH is above 35%,
+the economizer is unavailable even if OA enthalpy is lower than RA enthalpy.
+A 75-degree-F dry-bulb ceiling and 55/57-degree-F OA dew-point enable/disable
+limits provide additional warm- and humid-air protection.
 
 Sensor reliability selects the safest usable fallback without inventing a
 good reading:
@@ -230,7 +250,7 @@ cooling is allowed so the chilled-water coil can provide the balance. The
 command-center API publishes method, availability, OA/RA enthalpy, enthalpy
 delta, OA dew point, requested/effective position, limiting reason, proof
 timer, and FDD flags. These are computed diagnostics rather than new BACnet
-objects, so the catalog remains 329 points.
+objects. The separate HW telemetry release expands the catalog to 355 points.
 
 ## Air-delivery animation contract
 

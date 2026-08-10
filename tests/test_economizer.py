@@ -85,12 +85,15 @@ def test_dual_enthalpy_enable_hold_and_disable_hysteresis() -> None:
     assert ahu.economizer_snapshot()["free_cooling_available"] is True
     assert ahu.economizer_snapshot()["suitability_method"] == "dual-enthalpy"
 
-    # Equal OA/RA enthalpy sits in the -1/+1 Btu/lb hold band.
+    # Near-equal OA/RA enthalpy sits in the -1/+1 Btu/lb hold band. Keep
+    # outdoor dry bulb at the 60 F boundary so this case is not also subject
+    # to the independent warm/humid lockout.
+    ahu._ra_humidity = 25.0
     effective = ahu._update_economizer(
         1.0,
         requested_pct=100.0,
-        oa_temp_f=72.0,
-        oa_humidity_pct=50.0,
+        oa_temp_f=60.0,
+        oa_humidity_pct=55.0,
         cooling_command_pct=50.0,
         safety_shutdown=False,
     )
@@ -108,6 +111,31 @@ def test_dual_enthalpy_enable_hold_and_disable_hysteresis() -> None:
     assert effective == 0.0
     assert ahu.economizer_snapshot()["free_cooling_available"] is False
     assert ahu.economizer_snapshot()["state"] == "unavailable-weather"
+
+
+def test_warm_humid_lockout_overrides_favorable_differential_enthalpy() -> None:
+    _, ahu = _model()
+    _prime_cooling_need(ahu)
+
+    # This OA state has substantially lower enthalpy than 72 F / 50% RH
+    # return air, but the owner's sequence prohibits economizing when both
+    # OAT exceeds 60 F and OA RH exceeds 35%.
+    effective = ahu._update_economizer(
+        1.0,
+        requested_pct=100.0,
+        oa_temp_f=70.0,
+        oa_humidity_pct=50.0,
+        cooling_command_pct=50.0,
+        safety_shutdown=False,
+    )
+    snapshot = ahu.economizer_snapshot()
+
+    assert snapshot["enthalpy_delta_btu_lb"] < -1.0
+    assert snapshot["warm_humid_lockout"] is True
+    assert snapshot["free_cooling_available"] is False
+    assert snapshot["state"] == "unavailable-weather"
+    assert snapshot["limiting_reason"] == "outdoor air above 60 F and 35% RH"
+    assert effective == 0.0
 
 
 def test_high_dew_point_locks_out_economizer_even_below_ra_dry_bulb() -> None:
