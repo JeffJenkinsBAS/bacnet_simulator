@@ -1,0 +1,507 @@
+{
+  "schema_version": 1,
+  "coordinate_system": "percent",
+  "building": {
+    "name": "ACI Building Automation Training Center",
+    "asset": "/static/assets/building-digital-twin.png",
+    "pressure": {
+      "group_id": "ACI-SIM-SITE",
+      "alias": "building_pressure"
+    }
+  },
+  "locations": [
+    {
+      "id": "ahu-1",
+      "label": "AHU-1",
+      "group_id": "ACI-SIM-AHU-1",
+      "component_type": "ahu",
+      "floor": "plant",
+      "x": 43,
+      "y": 59,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "sa_fan_ss",
+        "status_alias": "sa_fan_status"
+      }
+    },
+    {
+      "id": "ef-1",
+      "label": "EF-1",
+      "group_id": "ACI-SIM-EF-1",
+      "component_type": "exhaust_fan",
+      "floor": "roof",
+      "x": 69,
+      "y": 15,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "exh_fan_ss",
+        "status_alias": "fan_status"
+      }
+    },
+    {
+      "id": "chiller-1",
+      "label": "Chiller 1",
+      "group_id": "ACI-SIM-CHILLER-1",
+      "component_type": "chiller",
+      "floor": "plant",
+      "x": 14,
+      "y": 57,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "chiller_ss",
+        "status_alias": "chiller_status"
+      }
+    },
+    {
+      "id": "cooling-tower-1",
+      "label": "Cooling Tower 1",
+      "group_id": "ACI-SIM-CHILLER-1",
+      "component_type": "cooling_tower",
+      "floor": "roof",
+      "x": 41,
+      "y": 10,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "ct_fan_ss",
+        "status_alias": "ct_fan_status"
+      }
+    },
+    {
+      "id": "chw-pump-1",
+      "label": "CHW Pump 1",
+      "group_id": "ACI-SIM-CHILLER-1",
+      "component_type": "pump",
+      "floor": "plant",
+      "x": 12,
+      "y": 66,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "chw_pump_ss",
+        "status_alias": "chw_pump_status"
+      }
+    },
+    {
+      "id": "cw-pump-1",
+      "label": "CW Pump 1",
+      "group_id": "ACI-SIM-CHILLER-1",
+      "component_type": "pump",
+      "floor": "plant",
+      "x": 15,
+      "y": 70,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "cw_pump_ss",
+        "status_alias": "cw_pump_status"
+      }
+    },
+    {
+      "id": "chiller-2",
+      "label": "Chiller 2",
+      "group_id": "ACI-SIM-CHILLER-2",
+      "component_type": "chiller",
+      "floor": "plant",
+      "x": 20,
+      "y": 54,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "chiller_ss",
+        "status_alias": "chiller_status"
+      }
+    },
+    {
+      "id": "cooling-tower-2",
+      "label": "Cooling Tower 2",
+      "group_id": "ACI-SIM-CHILLER-2",
+      "component_type": "cooling_tower",
+      "floor": "roof",
+      "x": 49,
+      "y": 10,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "ct_fan_ss",
+        "status_alias": "ct_fan_status"
+      }
+    },
+    {
+      "id": "chw-pump-2",
+      "label": "CHW Pump 2",
+      "group_id": "ACI-SIM-CHILLER-2",
+      "component_type": "pump",
+      "floor": "plant",
+      "x": 20,
+      "y": 66,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "chw_pump_ss",
+        "status_alias": "chw_pump_status"
+      }
+    },
+    {
+      "id": "cw-pump-2",
+      "label": "CW Pump 2",
+      "group_id": "ACI-SIM-CHILLER-2",
+      "component_type": "pump",
+      "floor": "plant",
+      "x": 23,
+      "y": 70,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "cw_pump_ss",
+        "status_alias": "cw_pump_status"
+      }
+    },
+    {
+      "id": "chiller-3",
+      "label": "Chiller 3",
+      "group_id": "ACI-SIM-CHILLER-3",
+      "component_type": "chiller",
+      "floor": "plant",
+      "x": 27,
+      "y": 52,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "chiller_ss",
+        "status_alias": "chiller_status"
+      }
+    },
+    {
+      "id": "cooling-tower-3",
+      "label": "Cooling Tower 3",
+      "group_id": "ACI-SIM-CHILLER-3",
+      "component_type": "cooling_tower",
+      "floor": "roof",
+      "x": 56,
+      "y": 13,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "ct_fan_ss",
+        "status_alias": "ct_fan_status"
+      }
+    },
+    {
+      "id": "chw-pump-3",
+      "label": "CHW Pump 3",
+      "group_id": "ACI-SIM-CHILLER-3",
+      "component_type": "pump",
+      "floor": "plant",
+      "x": 29,
+      "y": 66,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "chw_pump_ss",
+        "status_alias": "chw_pump_status"
+      }
+    },
+    {
+      "id": "cw-pump-3",
+      "label": "CW Pump 3",
+      "group_id": "ACI-SIM-CHILLER-3",
+      "component_type": "pump",
+      "floor": "plant",
+      "x": 32,
+      "y": 70,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "cw_pump_ss",
+        "status_alias": "cw_pump_status"
+      }
+    },
+    {
+      "id": "boiler-1",
+      "label": "Boiler 1",
+      "group_id": "ACI-SIM-BOILER-1",
+      "component_type": "boiler",
+      "floor": "plant",
+      "x": 22,
+      "y": 76,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "boiler_ss",
+        "status_alias": "boiler_ok"
+      }
+    },
+    {
+      "id": "boiler-2",
+      "label": "Boiler 2",
+      "group_id": "ACI-SIM-BOILER-2",
+      "component_type": "boiler",
+      "floor": "plant",
+      "x": 27,
+      "y": 76,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "boiler_ss",
+        "status_alias": "boiler_ok"
+      }
+    },
+    {
+      "id": "boiler-3",
+      "label": "Boiler 3",
+      "group_id": "ACI-SIM-BOILER-3",
+      "component_type": "boiler",
+      "floor": "plant",
+      "x": 32,
+      "y": 74,
+      "diagnostic": {
+        "type": "binary_command_status",
+        "command_alias": "boiler_ss",
+        "status_alias": "boiler_ok"
+      }
+    },
+    {
+      "id": "vav-1",
+      "label": "VAV-1",
+      "group_id": "ACI-SIM-VAV-1",
+      "component_type": "vav",
+      "floor": "1",
+      "x": 50,
+      "y": 57,
+      "space": {"width": 9, "height": 8, "angle": 8, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-2",
+      "label": "VAV-2",
+      "group_id": "ACI-SIM-VAV-2",
+      "component_type": "vav",
+      "floor": "1",
+      "x": 56,
+      "y": 57,
+      "space": {"width": 9, "height": 8, "angle": 8, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-3",
+      "label": "VAV-3",
+      "group_id": "ACI-SIM-VAV-3",
+      "component_type": "vav",
+      "floor": "1",
+      "x": 62,
+      "y": 57,
+      "space": {"width": 9, "height": 8, "angle": 8, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-4",
+      "label": "VAV-4",
+      "group_id": "ACI-SIM-VAV-4",
+      "component_type": "vav",
+      "floor": "1",
+      "x": 68,
+      "y": 57,
+      "space": {"width": 9, "height": 8, "angle": 8, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-5",
+      "label": "VAV-5",
+      "group_id": "ACI-SIM-VAV-5",
+      "component_type": "vav",
+      "floor": "1",
+      "x": 74,
+      "y": 57,
+      "space": {"width": 9, "height": 8, "angle": 8, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-6",
+      "label": "VAV-6",
+      "group_id": "ACI-SIM-VAV-6",
+      "component_type": "vav",
+      "floor": "1",
+      "x": 80,
+      "y": 57,
+      "space": {"width": 9, "height": 8, "angle": 8, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-7",
+      "label": "VAV-7",
+      "group_id": "ACI-SIM-VAV-7",
+      "component_type": "vav",
+      "floor": "2",
+      "x": 39,
+      "y": 40,
+      "space": {"width": 10, "height": 7, "angle": 6, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-8",
+      "label": "VAV-8",
+      "group_id": "ACI-SIM-VAV-8",
+      "component_type": "vav",
+      "floor": "2",
+      "x": 46,
+      "y": 40,
+      "space": {"width": 10, "height": 7, "angle": 6, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-9",
+      "label": "VAV-9",
+      "group_id": "ACI-SIM-VAV-9",
+      "component_type": "vav",
+      "floor": "2",
+      "x": 53,
+      "y": 40,
+      "space": {"width": 10, "height": 7, "angle": 6, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-10",
+      "label": "VAV-10",
+      "group_id": "ACI-SIM-VAV-10",
+      "component_type": "vav",
+      "floor": "2",
+      "x": 60,
+      "y": 40,
+      "space": {"width": 10, "height": 7, "angle": 6, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-11",
+      "label": "VAV-11",
+      "group_id": "ACI-SIM-VAV-11",
+      "component_type": "vav",
+      "floor": "2",
+      "x": 66,
+      "y": 40,
+      "space": {"width": 10, "height": 7, "angle": 6, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-12",
+      "label": "VAV-12",
+      "group_id": "ACI-SIM-VAV-12",
+      "component_type": "vav",
+      "floor": "2",
+      "x": 72,
+      "y": 40,
+      "space": {"width": 10, "height": 7, "angle": 6, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-13",
+      "label": "VAV-13",
+      "group_id": "ACI-SIM-VAV-13",
+      "component_type": "vav",
+      "floor": "3",
+      "x": 39,
+      "y": 25,
+      "space": {"width": 11, "height": 7, "angle": 4, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-14",
+      "label": "VAV-14",
+      "group_id": "ACI-SIM-VAV-14",
+      "component_type": "vav",
+      "floor": "3",
+      "x": 48,
+      "y": 25,
+      "space": {"width": 11, "height": 7, "angle": 4, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-15",
+      "label": "VAV-15",
+      "group_id": "ACI-SIM-VAV-15",
+      "component_type": "vav",
+      "floor": "3",
+      "x": 57,
+      "y": 25,
+      "space": {"width": 11, "height": 7, "angle": 4, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-16",
+      "label": "VAV-16",
+      "group_id": "ACI-SIM-VAV-16",
+      "component_type": "vav",
+      "floor": "3",
+      "x": 66,
+      "y": 25,
+      "space": {"width": 11, "height": 7, "angle": 4, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    },
+    {
+      "id": "vav-17",
+      "label": "VAV-17",
+      "group_id": "ACI-SIM-VAV-17",
+      "component_type": "vav",
+      "floor": "3",
+      "x": 74,
+      "y": 25,
+      "space": {"width": 11, "height": 7, "angle": 4, "offset_x": 1, "offset_y": 1},
+      "diagnostic": {
+        "type": "vav_airflow",
+        "setpoint_alias": "airflow_setpoint",
+        "airflow_alias": "airflow"
+      }
+    }
+  ]
+}

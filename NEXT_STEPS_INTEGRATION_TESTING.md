@@ -1,9 +1,8 @@
 # Next Steps: Bench Laptop Deployment → Integration Testing
 
-Use **`aci-bacnet-sim-phase5-service.zip`** — it's the cumulative, current
-build (everything from the equipment models through the service scripts).
-The earlier phase zips are superseded; ignore them to avoid confusion
-about which one is "real."
+Use the working checkout on the Test Bench laptop as the authoritative
+build. Historical phase ZIP files are superseded and must not be deployed
+over this checkout.
 
 ## 1. Get the project onto the laptop
 
@@ -37,12 +36,11 @@ Edit `config\network.json` to the verified bench topology:
 - **`udp_port`** → `47808`. The simulator listens on `47808`; the bench
   WebCTRL host `192.168.168.200` runs its BACnet connection on `47809`
   and targets the simulator at `192.168.168.201:47808`.
-- **`peer_allowlist`** → `["192.168.168.200"]` so the simulator only
-  answers the bench WebCTRL host and silently drops every other source
-  (single-point connection). The dashboard's Network panel shows a live
-  count of blocked requests.
-- **`write_source_allowlist`** → `["192.168.168.200"]` so writes are also
-  accepted only from the bench WebCTRL host.
+- **`peer_allowlist`** and **`write_source_allowlist`** → the verified live
+  peers `192.168.168.1` through `.7`, plus `192.168.168.200`. Do not
+  narrow this to the older `.200`-only assumption; live traffic confirms
+  the controller peers are active. The dashboard's Network panel shows a
+  live count of blocked requests.
 
 ## 5. Do one manual test run first, before wrapping it as a service
 
@@ -50,7 +48,7 @@ Edit `config\network.json` to the verified bench topology:
 scripts\windows\run.bat
 ```
 
-Confirm the dashboard opens at `http://127.0.0.1:8000` and
+Confirm the dashboard opens at `http://127.0.0.1:8001` and
 `logs\aci_sim.log` shows something like:
 
 ```
@@ -77,10 +75,12 @@ expect **will not appear**. Add it manually before moving on:
 
 1. `wf.msc` → **Inbound Rules → New Rule → Port → UDP → Specific local
    ports: `47808`** (or just run `scripts\windows\add_firewall_47808.bat`
-   as Administrator, which scopes the rule to `192.168.168.200`).
+   as Administrator, which scopes the rule to `.1` through `.7` plus
+   `192.168.168.200`).
 2. Allow the connection, apply to **all profiles** (the bench subnet has
    no gateway so Windows treats it as Public), name it identifiably, and
-   restrict the remote IP to the WebCTRL host `192.168.168.200`.
+   restrict the remote IP to the verified peer set: `192.168.168.1`
+   through `.7`, plus `192.168.168.200`.
 
 ## 7. Get NSSM and install the service
 
@@ -92,7 +92,7 @@ expect **will not appear**. Add it manually before moving on:
    ```
 
 Confirm in `services.msc` that **ACIBACnetSimulator** shows as Running,
-and that the dashboard still loads at `http://127.0.0.1:8000`.
+and that the dashboard still loads at `http://127.0.0.1:8001`.
 
 ## 8. Reboot the laptop once, to prove auto-start actually works
 

@@ -2,6 +2,7 @@
   "group_id": "ACI-SIM-CHILLER-2",
   "instance_offset": 3000,
   "description": "Simulated chiller 2 unit, condenser water, and cooling tower.",
+  "model_parameters": {},
   "points": [
     {
       "alias": "chiller_enable",
@@ -132,15 +133,15 @@
       "object_instance": 21,
       "object_name": "CHILLER-2 CHWS Stpt Reset",
       "description": "Chiller 2 chilled-water-supply setpoint reset",
-      "units": "percent",
+      "units": "degrees-fahrenheit",
       "signal_direction": "webctrl_to_sim",
       "writable": true,
       "commandable": true,
-      "initial_value": 0.0,
-      "minimum": 0.0,
-      "maximum": 100.0,
+      "initial_value": 44.0,
+      "minimum": 38.0,
+      "maximum": 54.0,
       "update_interval_seconds": 1,
-      "relinquish_default": 0.0
+      "relinquish_default": 44.0
     },
     {
       "alias": "chws_temp",

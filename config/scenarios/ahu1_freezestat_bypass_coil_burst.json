@@ -1,0 +1,77 @@
+{
+  "scenario_id": "ahu1_freezestat_bypass_coil_burst",
+  "title": "AHU-1 Freezestat Bypass and Frozen Cooling-Coil Burst",
+  "description": "A deliberately failed freezestat allows subfreezing mixed air to remain on a stagnant chilled-water coil. Ice develops over 20 simulated minutes and the cooling coil ultimately ruptures and floods the mechanical area.",
+  "initial_conditions": {
+    "outside_air_temperature": 10,
+    "outside_air_humidity": 45
+  },
+  "events": [
+    {
+      "time_seconds": 0,
+      "action": "set_fault",
+      "equipment": "ACI-SIM-AHU-1",
+      "alias": "automatic_freezestat_trip",
+      "fault": "safety_bypass",
+      "description": "Bypass the automatic freezestat to represent a failed or improperly commissioned low-temperature cutout"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_fault",
+      "equipment": "ACI-SIM-AHU-1",
+      "alias": "economizer_damper_feedback",
+      "fault": "stuck_value",
+      "parameters": {
+        "value": 100
+      },
+      "description": "Fail the physical outside-air damper fully open so the mixed-air low-limit command cannot protect the coil"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-AHU-1",
+      "alias": "sa_fan_ss",
+      "value": true,
+      "description": "Run the supply fan so cold outside air crosses the coils"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-AHU-1",
+      "alias": "economizer",
+      "value": 100,
+      "description": "Drive the outside-air damper fully open"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-AHU-1",
+      "alias": "preheat_valve",
+      "value": 0,
+      "description": "Remove preheat protection"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-AHU-1",
+      "alias": "cooling_valve",
+      "value": 0,
+      "description": "Leave chilled water stagnant so the no-flow 20-minute exposure path is demonstrated"
+    }
+  ],
+  "expected_results": [
+    "The failed-open outside-air damper defeats the mixed-air low-limit command and cooling-coil entering air remains below 32 degrees F while the bypassed freezestat does not shut the fan",
+    "The freeze-condition point activates and the ice indication increases with simulated exposure",
+    "At 20 simulated minutes of continuous subfreezing exposure without proven chilled-water flow, the cooling-coil burst/flood alarm latches",
+    "The AHU command-center graphic changes to the frozen cooling-coil and flooded-floor state"
+  ],
+  "completion_criteria": [
+    "Student identifies cold outside air, loss of preheat, the failed-open outside-air damper, and the bypassed freezestat as the initiating chain",
+    "Student explains why a functioning low-temperature cutout must stop the fan, close outside air, and place the water coil in its configured protective valve state"
+  ],
+  "instructor_notes": "Run at 60x simulation speed to complete the 20-simulated-minute exposure in about 20 seconds of wall time. This deliberately combines a failed-open OA damper with a bypassed freezestat; the working mixed-air low-limit still commands closed but cannot move the failed actuator. The 20/60-minute damage model is a training approximation; real coil-freeze risk depends on fluid temperature, flow, glycol, geometry, and weather. Use Restart after the exercise to repair the latched coil burst and clear forces/faults.",
+  "student_objectives": [
+    "Diagnose a compound freeze-protection failure from air temperature, valve, fan, and safety evidence",
+    "Understand why a freezestat is installed as a serpentine low-limit element across the coil face rather than as a single averaging air-temperature point"
+  ]
+}

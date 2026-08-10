@@ -32,6 +32,21 @@ echo.
 if not exist venv (
     echo Creating a virtual environment in .\venv ...
     python -m venv venv
+    if errorlevel 1 (
+        echo ERROR: failed to create the virtual environment.
+        pause
+        exit /b 1
+    )
+) else (
+    echo Checking the existing virtual environment ...
+    venv\Scripts\python.exe -c "import sys; assert sys.version_info[:2] == (3, 11), sys.version"
+    if errorlevel 1 (
+        echo.
+        echo ERROR: .\venv is broken or is not based on Python 3.11.
+        echo Move it aside and recreate it from a standalone Python 3.11 install.
+        pause
+        exit /b 1
+    )
 )
 
 call venv\Scripts\activate.bat
@@ -44,6 +59,13 @@ if errorlevel 1 (
     echo Most likely cause: vendor_packages\ was built for a different
     echo Python version or OS than this machine. Re-run
     echo download_offline_packages.bat on a machine matching this one.
+    pause
+    exit /b 1
+)
+
+python -c "import app.api, app.config_models, app.engine, bacpypes3, fastapi, pydantic, uvicorn"
+if errorlevel 1 (
+    echo ERROR: dependency smoke test failed; the simulator was not installed cleanly.
     pause
     exit /b 1
 )

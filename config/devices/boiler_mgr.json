@@ -2,6 +2,7 @@
   "group_id": "ACI-SIM-BOILER-MGR",
   "instance_offset": 5000,
   "description": "Boiler Manager's plant-level status/enable points.",
+  "model_parameters": {},
   "points": [
     {
       "alias": "boiler1_ok",

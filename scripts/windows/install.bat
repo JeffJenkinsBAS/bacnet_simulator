@@ -37,7 +37,18 @@ if not exist venv (
         exit /b 1
     )
 ) else (
-    echo Virtual environment already exists, reusing .\venv
+    echo Checking the existing virtual environment ...
+    venv\Scripts\python.exe -c "import sys; assert sys.version_info[:2] == (3, 11), sys.version"
+    if errorlevel 1 (
+        echo.
+        echo ERROR: .\venv is broken or is not based on Python 3.11.
+        echo Do not reuse or copy virtual environments between applications.
+        echo Move the existing venv aside, install standalone Python 3.11,
+        echo then run this installer again to create a clean environment.
+        pause
+        exit /b 1
+    )
+    echo Virtual environment is healthy, reusing .\venv
 )
 
 call venv\Scripts\activate.bat
@@ -53,6 +64,13 @@ if errorlevel 1 (
     echo ERROR: dependency installation failed. See the message above.
     echo If this machine has no internet access, use install_offline.bat
     echo instead -- see PACKAGING.md for how to prepare the offline packages.
+    pause
+    exit /b 1
+)
+
+python -c "import app.api, app.config_models, app.engine, bacpypes3, fastapi, pydantic, uvicorn"
+if errorlevel 1 (
+    echo ERROR: dependency smoke test failed; the simulator was not installed cleanly.
     pause
     exit /b 1
 )

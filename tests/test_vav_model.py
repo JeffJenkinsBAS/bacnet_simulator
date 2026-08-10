@@ -41,6 +41,7 @@ def _build_vav(**param_overrides) -> tuple[PointRegistry, GroupView, SingleDuctV
         damper_time_constant_seconds=param_overrides.pop("damper_time_constant_seconds", 5.0),
         max_reheat_rise_f=param_overrides.pop("max_reheat_rise_f", 30.0),
         thermal_time_constant_seconds=param_overrides.pop("thermal_time_constant_seconds", 10.0),
+        **param_overrides,
     )
     vav = SingleDuctVavModel(equipment_id=GROUP_ID, registry=view, parameters=params)
     return registry, view, vav
@@ -77,18 +78,80 @@ async def test_airflow_is_capped_by_low_static_pressure():
         vav.tick(1.0)
 
     airflow = view.get("airflow")
-    assert airflow < 300.0, f"expected airflow capped well below max due to low static, got {airflow}"
+    assert 450.0 < airflow < 550.0, (
+        f"quarter design pressure should produce about half design airflow by the fan-law square root, got {airflow}"
+    )
 
 
-async def test_zero_damper_command_yields_near_zero_airflow():
+async def test_zero_damper_command_yields_only_closed_blade_leakage():
     registry, view, vav = _build_vav()
     vav.available_static_pressure_inwc = 2.0
+    vav._airflow_cfm = 750.0
     await _write_commandable(registry, "damper_position_command", 0.0)
+    await _write_commandable(registry, "airflow_setpoint", 800.0)
 
-    for _ in range(30):
+    vav.tick(1.0)
+
+    assert 0.0 <= view.get("airflow") <= 3.0
+    assert view.get("airflow") == pytest.approx(
+        vav.params.closed_damper_leakage_cfm
+    )
+
+
+async def test_unproven_ahu_forces_exact_zero_airflow():
+    registry, view, vav = _build_vav()
+    vav.available_static_pressure_inwc = 0.0
+    vav._airflow_cfm = 750.0
+    await _write_commandable(registry, "damper_position_command", 100.0)
+    await _write_commandable(registry, "airflow_setpoint", 800.0)
+
+    vav.tick(1.0)
+
+    assert view.get("airflow") == 0.0
+
+
+async def test_airflow_setpoint_caps_available_damper_capacity():
+    registry, view, vav = _build_vav()
+    vav.available_static_pressure_inwc = 2.0
+    await _write_commandable(registry, "damper_position_command", 100.0)
+    await _write_commandable(registry, "airflow_setpoint", 400.0)
+
+    for _ in range(60):
         vav.tick(1.0)
 
-    assert view.get("airflow") < 5.0
+    assert 390.0 <= view.get("airflow") <= 410.0
+
+
+async def test_read_only_airflow_limits_and_damper_feedback_are_published():
+    registry, view, vav = _build_vav(
+        max_airflow_cfm=1000.0,
+        occupied_minimum_airflow_cfm=300.0,
+        heating_maximum_airflow_cfm=500.0,
+    )
+    vav.available_static_pressure_inwc = 2.0
+    await _write_commandable(registry, "damper_position_command", 42.0)
+
+    vav.tick(1.0)
+
+    assert view.get("heating_min_airflow") == 300.0
+    assert view.get("heating_max_airflow") == 500.0
+    assert view.get("cooling_min_airflow") == 300.0
+    assert view.get("cooling_max_airflow") == 1000.0
+    assert view.get("damper_position_feedback") == 42.0
+
+    expected_instances = {
+        "heating_min_airflow": 81,
+        "heating_max_airflow": 82,
+        "cooling_min_airflow": 83,
+        "cooling_max_airflow": 84,
+        "damper_position_feedback": 85,
+    }
+    for alias, local_instance in expected_instances.items():
+        point = view.point_config(alias)
+        assert point.object_type.value == "analog-value"
+        assert point.object_instance == local_instance
+        assert point.writable is False
+        assert point.commandable is False
 
 
 async def test_discharge_temp_rises_with_reheat_valve():

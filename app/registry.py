@@ -36,6 +36,7 @@ _UNITS_MAP = {
     "percent": EngineeringUnits.percent,
     "cubic-feet-per-minute": EngineeringUnits.cubicFeetPerMinute,
     "gallons-per-minute": EngineeringUnits.usGallonsPerMinute,
+    "inches-of-water": EngineeringUnits.inchesOfWater,
     "no-units": EngineeringUnits.noUnits,
 }
 
@@ -79,6 +80,11 @@ class PointRegistry:
         Application.from_object_list() alongside the one device and
         network-port objects.
         """
+        # A restart rebuilds every BACnet object and priority array. Discard
+        # all references and reliability bookkeeping from the previous object
+        # database before registering the replacements.
+        self._points.clear()
+        self._reliability_failed.clear()
         objects = []
         for group in self.groups:
             for point in group.points:
@@ -104,12 +110,17 @@ class PointRegistry:
             statusFlags=[0, 0, 0, 0],
             outOfService=False,
         )
+        analog_kwargs = {
+            **({"minPresValue": point.minimum} if point.minimum is not None else {}),
+            **({"maxPresValue": point.maximum} if point.maximum is not None else {}),
+        }
 
         if point.object_type == ObjectType.analog_input:
             return AnalogInputObject(
                 presentValue=point.initial_value,
                 units=_units(point.units),
                 covIncrement=point.cov_increment if point.cov_increment is not None else 0.1,
+                **analog_kwargs,
                 **common_kwargs,
             )
 
@@ -119,6 +130,7 @@ class PointRegistry:
                 units=_units(point.units),
                 covIncrement=point.cov_increment if point.cov_increment is not None else 0.1,
                 relinquishDefault=point.relinquish_default if point.relinquish_default is not None else 0.0,
+                **analog_kwargs,
                 **common_kwargs,
             )
 
@@ -129,12 +141,14 @@ class PointRegistry:
                     units=_units(point.units),
                     covIncrement=point.cov_increment if point.cov_increment is not None else 0.1,
                     relinquishDefault=point.relinquish_default if point.relinquish_default is not None else 0.0,
+                    **analog_kwargs,
                     **common_kwargs,
                 )
             return AnalogValueObject(
                 presentValue=point.initial_value,
                 units=_units(point.units),
                 covIncrement=point.cov_increment if point.cov_increment is not None else 0.1,
+                **analog_kwargs,
                 **common_kwargs,
             )
 
@@ -221,6 +235,46 @@ class PointRegistry:
         """Every point across all groups, keyed by 'group_id.alias'."""
         return dict(self._points)
 
+    def synchronize_reliability(self, fault_manager) -> None:
+        """Make BACnet Reliability/statusFlags match the current fault set.
+
+        Equipment publishing normally performs this reconciliation. Lifecycle
+        actions such as STOP ALL may intentionally halt the engine, so they
+        call this method after clearing faults to avoid leaving a stopped
+        BACnet object visibly faulted.
+        """
+        from app.faults import FaultType
+
+        for key, registered in self._points.items():
+            self._set_reliability(
+                key,
+                fault_manager.has_point_fault(
+                    registered.group_id,
+                    registered.config.alias,
+                    FaultType.reliability_fail,
+                ),
+            )
+
+    async def reset_runtime_state(self) -> None:
+        """Clear simulator-owned flags without disturbing the BACnet session.
+
+        WebCTRL owns commands written into BACnet priority arrays.  Releasing
+        all sixteen priorities here used to erase those live commands and
+        generated a burst of COV notifications across the entire object
+        database.  On the bench that burst could leave bacpypes3 servicing
+        timed-out confirmed COV transactions while the UDP socket remained
+        bound but stopped answering discovery.
+
+        Scenario/instructor priority writes are released separately by
+        ``ScenarioEngine.drain_priority_writes()``.  Preserve every other
+        present value and priority slot; the freshly rebuilt equipment models
+        will resume updating simulator-owned values on their normal ticks.
+        """
+        for key, registered in self._points.items():
+            obj = registered.bacnet_object
+            obj.outOfService = False
+            self._set_reliability(key, False)
+
     def points_for_group(self, group_id: str) -> dict[str, RegisteredPoint]:
         prefix = f"{group_id}."
         return {k[len(prefix):]: v for k, v in self._points.items() if k.startswith(prefix)}
@@ -272,8 +326,36 @@ class GroupView:
             commanded = self._fault_manager.apply_to_input(self._group_id, alias, commanded)
         return commanded
 
+    def has_point_fault(self, alias: str, fault_type) -> bool:
+        """Return whether a specific injected mechanic targets this point."""
+        if self._fault_manager is None:
+            return False
+        return self._fault_manager.has_point_fault(
+            self._group_id,
+            alias,
+            fault_type,
+        )
+
+    def point_fault_parameters(self, alias: str, fault_type):
+        """Return active fault parameters for equipment-level physics."""
+        if self._fault_manager is None:
+            return None
+        return self._fault_manager.point_fault_parameters(
+            self._group_id,
+            alias,
+            fault_type,
+        )
+
     def all_points(self) -> dict[str, RegisteredPoint]:
         return self._registry.points_for_group(self._group_id)
 
     def point_config(self, alias: str) -> PointConfig:
         return self._registry.all_points()[self._key(alias)].config
+
+    def group_config(self) -> EquipmentGroupConfig:
+        """Return this view's source configuration for model-parameter wiring."""
+        return next(
+            group
+            for group in self._registry.groups
+            if group.group_id == self._group_id
+        )

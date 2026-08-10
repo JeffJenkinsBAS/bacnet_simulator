@@ -32,6 +32,30 @@
       "description": "Start the CHW pump"
     },
     {
+      "time_seconds": 5,
+      "action": "set_value",
+      "equipment": "ACI-SIM-CHILLER-1",
+      "alias": "chw_iso_valve",
+      "value": true,
+      "description": "Open the Chiller-1 isolation valve"
+    },
+    {
+      "time_seconds": 5,
+      "action": "set_value",
+      "equipment": "ACI-SIM-CHILLER-1",
+      "alias": "cw_pump_ss",
+      "value": true,
+      "description": "Start the condenser-water pump"
+    },
+    {
+      "time_seconds": 5,
+      "action": "set_value",
+      "equipment": "ACI-SIM-CHILLER-1",
+      "alias": "ct_fan_ss",
+      "value": true,
+      "description": "Start the cooling-tower fan for normal heat rejection"
+    },
+    {
       "time_seconds": 120,
       "action": "set_fault",
       "equipment": "ACI-SIM-CHILLER-1",
@@ -45,7 +69,7 @@
     "Chiller-1 CHWS Temp reads normally (near 44F) for the first two minutes",
     "CHWS Temp then climbs gradually and continuously rather than jumping or oscillating",
     "Chiller Status remains proven/OK throughout -- this is a sensor problem, not an equipment failure",
-    "Downstream cooling performance should appear to degrade slowly, mimicking a real fouled/miscalibrated sensor"
+    "Downstream cooling remains physically normal because this is a sensor-only drift, helping distinguish bad telemetry from true capacity loss"
   ],
   "completion_criteria": [
     "Student notices the drift via a trend rather than a single reading",

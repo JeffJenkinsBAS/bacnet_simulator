@@ -27,6 +27,7 @@ import asyncio
 import glob
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -35,6 +36,7 @@ from fastapi import FastAPI
 
 from app.api import create_app
 from app.config_models import EquipmentGroupConfig, NetworkConfig, SupervisoryDeviceConfig, validate_equipment_groups
+from app.diagnostics import CommandCenterDiagnostics
 from app.engine import SimulationEngine
 from app.equipment.ahu import AhuModel, AhuParameters
 from app.equipment.boiler import BoilerModel
@@ -64,6 +66,11 @@ def load_network_config() -> NetworkConfig:
 def load_supervisory_config() -> SupervisoryDeviceConfig:
     with open(CONFIG_DIR / "supervisory_device.json") as f:
         return SupervisoryDeviceConfig.model_validate(json.load(f))
+
+
+def load_building_layout() -> dict:
+    with open(CONFIG_DIR / "building_layout.json") as f:
+        return json.load(f)
 
 
 def load_all_equipment_groups() -> list[EquipmentGroupConfig]:
@@ -119,19 +126,8 @@ def build_equipment(registry: PointRegistry, fault_manager: FaultManager) -> lis
     (scoped to that model's own group_id, and now also fault-aware) plus
     whatever cross-group references it needs.
     """
-    equipment = []
-
     site_view = registry.view("ACI-SIM-SITE", fault_manager=fault_manager)
     site = SiteModel("ACI-SIM-SITE", site_view)
-    equipment.append(site)
-
-    ahu = AhuModel(
-        "ACI-SIM-AHU-1", registry.view("ACI-SIM-AHU-1", fault_manager=fault_manager),
-        site_registry=site_view, parameters=AhuParameters(),
-    )
-    equipment.append(ahu)
-
-    equipment.append(ExhaustFanModel("ACI-SIM-EF-1", registry.view("ACI-SIM-EF-1", fault_manager=fault_manager)))
 
     plant_view = registry.view("ACI-SIM-CHW-PLANT", fault_manager=fault_manager)
     chillers = []
@@ -142,8 +138,6 @@ def build_equipment(registry: PointRegistry, fault_manager: FaultManager) -> lis
                 site_registry=site_view, plant_registry=plant_view,
             )
         )
-    equipment.extend(chillers)
-
     boiler_mgr_view = registry.view("ACI-SIM-BOILER-MGR", fault_manager=fault_manager)
     boilers = []
     for n in (1, 2, 3):
@@ -153,33 +147,84 @@ def build_equipment(registry: PointRegistry, fault_manager: FaultManager) -> lis
                 manager_registry=boiler_mgr_view, manager_enable_alias=f"enable_boiler{n}",
             )
         )
-    equipment.extend(boilers)
+    # Managers tick after their units and expose typed physical loop state to
+    # the downstream AHU and VAV models.
+    chw_manager = ChwPlantManagerModel("ACI-SIM-CHW-PLANT", plant_view, chillers)
+    boiler_manager = BoilerManagerModel("ACI-SIM-BOILER-MGR", boiler_mgr_view, boilers)
 
-    # Manager aggregators tick AFTER the units they mirror (see managers.py).
-    equipment.append(ChwPlantManagerModel("ACI-SIM-CHW-PLANT", plant_view, chillers))
-    equipment.append(BoilerManagerModel("ACI-SIM-BOILER-MGR", boiler_mgr_view, boilers))
+    ahu = AhuModel(
+        "ACI-SIM-AHU-1",
+        registry.view("ACI-SIM-AHU-1", fault_manager=fault_manager),
+        site_registry=site_view,
+        parameters=AhuParameters(),
+        chw_plant_model=chw_manager,
+        boiler_plant_model=boiler_manager,
+    )
+    # The plant supplies the AHU immediately; the AHU's completed coil load
+    # feeds the parent header/chillers on the next one-second thermal tick.
+    chw_manager.set_cooling_coils([ahu])
+    exhaust_fan = ExhaustFanModel(
+        "ACI-SIM-EF-1",
+        registry.view("ACI-SIM-EF-1", fault_manager=fault_manager),
+        site_registry=site_view,
+        ahu_model=ahu,
+    )
+
+    vavs = []
+    group_configs = {group.group_id: group for group in registry.groups}
+
+    def vav_parameters(group_id: str) -> VavParameters:
+        configured = group_configs[group_id].model_parameters
+        try:
+            return VavParameters(**configured)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{group_id} contains invalid VAV model_parameters: {exc}"
+            ) from exc
 
     # VAV-1/VAV-2: real physical controllers, no simulated Zone Temp.
     for n in (1, 2):
         group_id = f"ACI-SIM-VAV-{n}"
-        equipment.append(
+        vavs.append(
             SingleDuctVavModel(
-                group_id, registry.view(group_id, fault_manager=fault_manager), parameters=VavParameters(),
+                group_id,
+                registry.view(group_id, fault_manager=fault_manager),
+                parameters=vav_parameters(group_id),
                 has_physical_zone_sensor=True, ahu_model=ahu,
+                boiler_plant_model=boiler_manager,
             )
         )
 
-    # VAV-3/4/5: virtual zones, simulated Zone Temp included.
-    for n in (3, 4, 5):
+    # VAV-3..17: virtual zones, simulated Zone Temp included.
+    for n in range(3, 18):
         group_id = f"ACI-SIM-VAV-{n}"
-        equipment.append(
+        vavs.append(
             SingleDuctVavModel(
-                group_id, registry.view(group_id, fault_manager=fault_manager), parameters=VavParameters(),
+                group_id,
+                registry.view(group_id, fault_manager=fault_manager),
+                parameters=vav_parameters(group_id),
                 has_physical_zone_sensor=False, ahu_model=ahu,
+                boiler_plant_model=boiler_manager,
             )
         )
 
-    return equipment
+    # AHU-1 reads the previous tick's effective terminal positions to model
+    # the common-duct resistance seen by its static-pressure sensor. The VAVs
+    # then consume the AHU's newly calculated pressure later in the same tick.
+    ahu.set_vav_models(vavs)
+
+    # Physical dependency/tick order: ambient -> plants -> loop headers ->
+    # air handler -> pressure trim -> terminal units/zones.
+    return [
+        site,
+        *chillers,
+        *boilers,
+        chw_manager,
+        boiler_manager,
+        ahu,
+        exhaust_fan,
+        *vavs,
+    ]
 
 
 def load_llm_config() -> dict:
@@ -208,7 +253,7 @@ def build_application() -> tuple[FastAPI, BacnetTransport, SimulationEngine, Fau
     """
     Build everything that does NOT require a running asyncio event loop.
     bacpypes3's local objects need a running loop at construction time, so
-    starting the transport (which builds all 143 BACnet objects and binds
+    starting the transport (which builds the complete BACnet object catalog and binds
     the single UDP port) happens later, inside the FastAPI lifespan handler.
     """
     configure_logging()
@@ -219,7 +264,13 @@ def build_application() -> tuple[FastAPI, BacnetTransport, SimulationEngine, Fau
     registry = PointRegistry(groups)
     fault_manager = FaultManager()
     transport = BacnetTransport(network_config, supervisory_config, registry, fault_manager=fault_manager)
-    engine = SimulationEngine(equipment=[], fault_manager=fault_manager)
+    diagnostics = CommandCenterDiagnostics(registry, load_building_layout())
+    engine = SimulationEngine(
+        equipment=[],
+        fault_manager=fault_manager,
+        diagnostics=diagnostics,
+    )
+    diagnostics.set_equipment_provider(lambda: engine.equipment)
 
     scenario_engine = ScenarioEngine(
         fault_manager, registry,
@@ -238,7 +289,19 @@ def build_application() -> tuple[FastAPI, BacnetTransport, SimulationEngine, Fau
         ollama_client, registry, fault_manager, scenario_engine, audit_service
     )
 
-    api_app = create_app(transport, engine, fault_manager, scenario_engine, orchestration_service, ollama_client)
+    api_app = create_app(
+        transport,
+        engine,
+        fault_manager,
+        scenario_engine,
+        orchestration_service,
+        ollama_client,
+        diagnostics=diagnostics,
+        equipment_factory=lambda: build_equipment(
+            transport.registry,
+            fault_manager,
+        ),
+    )
     return api_app, transport, engine, fault_manager, scenario_engine
 
 
@@ -254,17 +317,26 @@ def create_lifespan_app() -> FastAPI:
         )
         logger.info("=" * 70)
 
-        transport.start()
-        engine.equipment.extend(build_equipment(transport.registry, fault_manager))
+        transport_started = False
+        duplicate_check_task: asyncio.Task | None = None
+        try:
+            transport.start()
+            transport_started = True
+            engine.equipment.extend(build_equipment(transport.registry, fault_manager))
 
-        if transport.network_config.startup_duplicate_instance_check:
-            asyncio.create_task(check_for_duplicate_instance(transport))
+            if transport.network_config.startup_duplicate_instance_check:
+                duplicate_check_task = asyncio.create_task(check_for_duplicate_instance(transport))
 
-        engine.start()
-        yield
-        engine.stop()
-        transport.stop()
-        logger.info("Shutdown complete")
+            await engine.start()
+            yield
+        finally:
+            if duplicate_check_task is not None and not duplicate_check_task.done():
+                duplicate_check_task.cancel()
+                await asyncio.gather(duplicate_check_task, return_exceptions=True)
+            await engine.stop()
+            if transport_started:
+                transport.stop()
+            logger.info("Shutdown complete")
 
     api_app.router.lifespan_context = lifespan
     return api_app
@@ -274,7 +346,14 @@ app = create_lifespan_app()
 
 
 def main() -> None:
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")
+    dashboard_host = os.environ.get("ACI_DASHBOARD_HOST", "127.0.0.1")
+    try:
+        dashboard_port = int(os.environ.get("ACI_DASHBOARD_PORT", "8001"))
+    except ValueError as exc:
+        raise SystemExit("ACI_DASHBOARD_PORT must be an integer") from exc
+    if not 1 <= dashboard_port <= 65535:
+        raise SystemExit("ACI_DASHBOARD_PORT must be between 1 and 65535")
+    uvicorn.run(app, host=dashboard_host, port=dashboard_port, log_level="warning")
 
 
 if __name__ == "__main__":

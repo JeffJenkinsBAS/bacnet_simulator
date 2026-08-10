@@ -11,7 +11,8 @@ BACnet device or a separate UDP port. Every group gets an `instance_offset`;
 a point's real, on-the-wire object instance is `instance_offset +
 object_instance` (the small per-group number, e.g. AI:1, that was previously
 enough on its own back when each group was its own device). This is what
-keeps 143 objects collision-free under one device without hand-numbering
+keeps the complete object catalog collision-free under one device without
+hand-numbering
 each one globally.
 
 These models are the single source of truth for what a config file is
@@ -25,7 +26,7 @@ from enum import Enum
 from ipaddress import IPv4Address
 from typing import Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ObjectType(str, Enum):
@@ -55,8 +56,16 @@ class SignalDirection(str, Enum):
 
 
 class NormalRange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     low: float
     high: float
+
+    @model_validator(mode="after")
+    def _low_must_not_exceed_high(self) -> "NormalRange":
+        if self.low > self.high:
+            raise ValueError("normal_range.low must not exceed normal_range.high")
+        return self
 
 
 class PointConfig(BaseModel):
@@ -71,10 +80,22 @@ class PointConfig(BaseModel):
     the offset either (see registry.GroupView).
     """
 
-    alias: str = Field(..., description="Internal name used by equipment models and the point registry")
+    model_config = ConfigDict(extra="forbid")
+
+    alias: str = Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        description="Internal name used by equipment models and the point registry",
+    )
     object_type: ObjectType
-    object_instance: int = Field(..., description="Local instance within the group, before instance_offset is applied")
-    object_name: str
+    object_instance: int = Field(
+        ...,
+        ge=0,
+        le=4194302,
+        description="Local instance within the group, before instance_offset is applied",
+    )
+    object_name: str = Field(..., min_length=1, max_length=255)
     description: str = ""
     units: str = "no-units"
     signal_direction: SignalDirection
@@ -84,8 +105,8 @@ class PointConfig(BaseModel):
     minimum: Optional[float] = None
     maximum: Optional[float] = None
     normal_range: Optional[NormalRange] = None
-    update_interval_seconds: float = 1.0
-    cov_increment: Optional[float] = None
+    update_interval_seconds: float = Field(default=1.0, gt=0)
+    cov_increment: Optional[float] = Field(default=None, ge=0)
     relinquish_default: Optional[float] = None
     interlock: bool = Field(
         default=False,
@@ -99,6 +120,22 @@ class PointConfig(BaseModel):
 
     @model_validator(mode="after")
     def _writable_points_must_be_commandable_or_intentional(self) -> "PointConfig":
+        if self.object_type in (
+            ObjectType.multi_state_input,
+            ObjectType.multi_state_output,
+            ObjectType.multi_state_value,
+        ):
+            raise ValueError(f"point '{self.alias}': multi-state objects are not implemented")
+        if self.commandable and not self.writable:
+            raise ValueError(f"point '{self.alias}': commandable=true requires writable=true")
+        if self.writable and self.signal_direction not in (
+            SignalDirection.webctrl_to_sim,
+            SignalDirection.bidirectional,
+            SignalDirection.instructor_only,
+        ):
+            raise ValueError(
+                f"point '{self.alias}': writable points must accept commands by signal direction"
+            )
         if self.writable and not self.commandable and self.object_type not in (
             ObjectType.analog_output,
             ObjectType.binary_output,
@@ -108,19 +145,45 @@ class PointConfig(BaseModel):
                 f"point '{self.alias}': writable AV/BV/MSV points must set "
                 f"commandable=true explicitly"
             )
+        if self.minimum is not None and self.maximum is not None and self.minimum > self.maximum:
+            raise ValueError(f"point '{self.alias}': minimum must not exceed maximum")
+        for value_name in ("initial_value", "relinquish_default"):
+            value = getattr(self, value_name)
+            if value is None:
+                continue
+            if self.minimum is not None and value < self.minimum:
+                raise ValueError(f"point '{self.alias}': {value_name} is below minimum")
+            if self.maximum is not None and value > self.maximum:
+                raise ValueError(f"point '{self.alias}': {value_name} is above maximum")
+        if self.normal_range is not None:
+            if self.minimum is not None and self.normal_range.low < self.minimum:
+                raise ValueError(f"point '{self.alias}': normal_range.low is below minimum")
+            if self.maximum is not None and self.normal_range.high > self.maximum:
+                raise ValueError(f"point '{self.alias}': normal_range.high is above maximum")
         return self
 
 
 class EquipmentGroupConfig(BaseModel):
     """One logical piece of equipment's full point list."""
 
-    group_id: str
+    model_config = ConfigDict(extra="forbid")
+
+    group_id: str = Field(..., min_length=1, max_length=128)
     description: str = ""
     instance_offset: int = Field(
         ...,
+        ge=0,
+        le=4194302,
         description=(
             "Added to every point's object_instance in this group to produce the real, "
             "global object instance on the single supervisory device."
+        ),
+    )
+    model_parameters: dict[str, float | str] = Field(
+        default_factory=dict,
+        description=(
+            "Optional equipment-physics parameters consumed by the in-process "
+            "model. BACnet point identifiers remain defined only by points."
         ),
     )
     points: list[PointConfig]
@@ -155,6 +218,11 @@ def validate_equipment_groups(groups: list["EquipmentGroupConfig"]) -> None:
         seen_group_ids.add(g.group_id)
         for p in g.points:
             global_instance = g.instance_offset + p.object_instance
+            if global_instance > 4194302:
+                raise ValueError(
+                    f"group '{g.group_id}' point '{p.alias}' produces BACnet instance "
+                    f"{global_instance}, above the maximum 4194302"
+                )
             key = (p.object_type.value, global_instance)
             if key in seen_global:
                 raise ValueError(
@@ -176,6 +244,8 @@ def validate_equipment_groups(groups: list["EquipmentGroupConfig"]) -> None:
 class SupervisoryDeviceConfig(BaseModel):
     """The single BACnet device every equipment group's objects live under."""
 
+    model_config = ConfigDict(extra="forbid")
+
     device_instance: int = Field(..., ge=0, le=4194302)
     device_name: str
     description: str = ""
@@ -183,6 +253,8 @@ class SupervisoryDeviceConfig(BaseModel):
 
 class NetworkConfig(BaseModel):
     """Validated BACnet/IP network and safety settings."""
+
+    model_config = ConfigDict(extra="forbid")
 
     bind_address: str = Field(default="127.0.0.1")
     subnet_bits: int = Field(default=24)
@@ -206,6 +278,12 @@ class NetworkConfig(BaseModel):
             IPv4Address(self.ip_default_gateway)
             for address in self.ip_dns_servers:
                 IPv4Address(address)
+            for field_name in ("write_source_allowlist", "peer_allowlist"):
+                addresses = getattr(self, field_name)
+                normalized = [str(IPv4Address(address)) for address in addresses]
+                if len(normalized) != len(set(normalized)):
+                    raise ValueError(f"{field_name} contains duplicate addresses")
+                setattr(self, field_name, normalized)
         except ValueError as exc:
             raise ValueError(f"invalid IPv4 network configuration: {exc}") from exc
         if not 0 <= self.subnet_bits <= 32:
@@ -214,4 +292,21 @@ class NetworkConfig(BaseModel):
             raise ValueError("udp_port must be between 1 and 65535")
         if not 0 <= self.vendor_identifier <= 65535:
             raise ValueError("vendor_identifier must be between 0 and 65535")
+        if self.peer_allowlist:
+            unreachable_writers = sorted(set(self.write_source_allowlist) - set(self.peer_allowlist))
+            if unreachable_writers:
+                raise ValueError(
+                    "write_source_allowlist must be a subset of peer_allowlist; "
+                    f"unreachable write sources: {', '.join(unreachable_writers)}"
+                )
+        is_loopback = IPv4Address(self.bind_address).is_loopback
+        if self.private_lab_mode and not is_loopback:
+            if not self.peer_allowlist:
+                raise ValueError(
+                    "private_lab_mode on a non-loopback interface requires a non-empty peer_allowlist"
+                )
+            if not self.write_source_allowlist:
+                raise ValueError(
+                    "private_lab_mode on a non-loopback interface requires a non-empty write_source_allowlist"
+                )
         return self

@@ -45,6 +45,17 @@ PHASE_6A_ALLOWED_ACTION_TYPES = {
     AllowedActionType.annotate_logs,
 }
 
+# Read-only intents that legitimately produce no actions -- they answer or
+# summarize, they never change simulator state. The system prompt tells the
+# model to return an empty actions list for these, so requiring nonempty
+# actions here would reject every valid explanation (found live with
+# hermes3:3b: a correct explain_behavior bundle was marked "bundle has no
+# actions"). Every other intent must still carry at least one action.
+READ_ONLY_INTENTS = {
+    AllowedIntent.explain_behavior,
+    AllowedIntent.summarize_events,
+}
+
 
 @dataclass
 class ValidationResult:
@@ -66,7 +77,7 @@ class ActionValidator:
                 f"PHASE_6A_ALLOWED_INTENTS)"
             )
 
-        if not bundle.actions:
+        if not bundle.actions and bundle.intent not in READ_ONLY_INTENTS:
             errors.append("bundle has no actions")
 
         for i, action in enumerate(bundle.actions):
@@ -108,12 +119,29 @@ class ActionValidator:
                 errors.append("inject_fault needs 'fault_type'")
             else:
                 try:
-                    FaultType(action.fault_type)
+                    fault_type = FaultType(action.fault_type)
                 except ValueError:
                     errors.append(
                         f"unknown fault_type '{action.fault_type}' -- must be one of "
                         f"{[t.value for t in FaultType]}"
                     )
+                else:
+                    if (
+                        fault_type == FaultType.safety_bypass
+                        and (
+                            action.group_id != "ACI-SIM-AHU-1"
+                            or action.alias
+                            not in {
+                                "automatic_high_static_trip",
+                                "automatic_freezestat_trip",
+                            }
+                        )
+                    ):
+                        errors.append(
+                            "safety_bypass may target only "
+                            "ACI-SIM-AHU-1.automatic_high_static_trip or "
+                            "ACI-SIM-AHU-1.automatic_freezestat_trip"
+                        )
         # Transport-level faults (device_offline, slow_response, write_rejected,
         # intermittent_comm) legitimately have no group_id/alias -- only check
         # existence when a target was actually given.

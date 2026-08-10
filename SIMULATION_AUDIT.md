@@ -190,32 +190,35 @@ stagnant sensor).
 Same class as 3.3: real boilers have low-water-cutoff / flow interlocks. Gate `_proven` on
 `circ_pump_running`.
 
-### 3.5 MEDIUM — Freezestat trip doesn't close the outside-air damper
+### 3.5 RESOLVED — Freezestat and economizer outdoor-air protection
 
-The AHU freezestat response stops the supply fan and drives the heating valve to 100% — but
-leaves the economizer/OA damper wherever WebCTRL commands it, and mixed-air temp keeps
-blending OA at full effect with the fan off. The standard freeze response (SOO reference:
-"stop supply fan, **close OA damper fully**, open HW valve") exists to stop feeding cold air
-to the coil; OA dampers also spring-return closed on fan stop in real AHUs.
+The AHU now closes outdoor air fully on fan-off, freezestat, high-static, and
+mixed-air-low-limit states. The mixed-air plenum decays slowly while the fan
+is off instead of continuing a forced blend.
 
-**Fix:** force `econ_pct = 0` while `freezestat_trip` (and arguably while both fans are off,
-emulating spring return); with the fan off, decay `ma_temp` slowly toward a plenum
-temperature instead of continuing the full blend calculation.
+The 329-point release also adds a computed economizer availability state
+machine. Dual OA/RA enthalpy is preferred, with single-enthalpy and dry-bulb
+fallbacks when sensors are unreliable. OA dry-bulb/dew-point high limits,
+45/47-degree-F mixed-air low-limit hysteresis, requested-versus-effective
+damper telemetry, three-minute integrated-cooling proof, and FDD flags are
+available through the command-center API/UI. No BACnet identifier was added
+or changed for this computed diagnostic.
 
 ### 3.6 MINOR — Accepted simplifications (document, don't necessarily change)
 
-- **Freezestat never self-trips** — it's instructor/WebCTRL-commanded only. A real freezestat
-  trips itself below ~38°F coil/mixed-air temp. An optional auto-trip parameter would let the
-  "economizer stuck open in winter" lesson end the way it does in the field.
+- **Historical limitation resolved in the 329-point AHU safety release.**
+  AHU-1 now has a separate automatic freezestat status and a cooling-coil
+  entering-air temperature sensor. The healthy safety latches a protective
+  shutdown; an explicitly bypassed safety permits the 20/60-simulated-minute
+  below-freezing exposure lesson and latched freeze/burst consequence.
 - **SA temp holds forever with fan off** (could drift slowly to ambient); **RA humidity is a
   constant** (never reflects OA humidity or coil latent removal); **virtual zone temps** are
   pulled toward 72°F with bounded influence (~±15%) — self-regulating by design. All are
   reasonable training-sim simplifications; listed so nobody mistakes them for bugs.
 - **Damper→airflow is linear** — real installed characteristics are closer to equal-percentage.
   Fine for training; a square-root curve would marginally improve realism.
-- **AHU-1 has no fan status point** — deliberate (governing Network I/O report has no such
-  point), but it means "fan commanded / no proof" can only be taught on EF-1, the chillers,
-  and the boilers, not on AHU-1. Known limitation, not a defect.
+- **Historical limitation resolved.** AHU-1 publishes supply- and return-fan
+  status and the command center shows both command and proof.
 
 ---
 

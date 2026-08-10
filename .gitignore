@@ -1,21 +1,33 @@
-# Python virtual environment (recreate with scripts\windows\install.bat)
+# Python/runtime
 venv/
-
-# Python bytecode caches
+.venv/
 __pycache__/
-*.pyc
-
-# Runtime output
-logs/
-
-# Offline installer payload (built by download_offline_packages.bat)
-vendor_packages/
-
-# Test runner cache
+*.py[cod]
 .pytest_cache/
+.coverage
+htmlcov/
 
-# NSSM binary (downloaded manually per PACKAGING.md, not distributed)
+# Local service/runtime state
+logs/
+*.log
+artifacts/
+vendor_packages/
 tools/nssm/nssm.exe
+tools/gh/
 
-# Claude Code session artifacts (worktrees, local settings)
-.claude/
+# Local working copies and generated handoff material
+backup-pr4/
+.publish-repo/
+pr4.patch
+ACI_BACnet_Simulator_Point_Mapping.xlsx
+*.inspect.ndjson
+config/network.working-backup.json
+
+# Local secrets and editor/OS state
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
