@@ -173,7 +173,13 @@ async def test_start_command_alone_uses_default_enable_and_proves_status() -> No
         await _write(registry, "ACI-SIM-CHILLER-1", alias, True)
     await _write(registry, "ACI-SIM-CHILLER-1", "chiller_ss", True)
 
-    for _ in range(15):
+    for _ in range(20):
+        site.tick(1.0)
+        chiller.tick(1.0)
+        manager.tick(1.0)
+
+    assert not chiller.proven
+    for _ in range(40):
         site.tick(1.0)
         chiller.tick(1.0)
         manager.tick(1.0)
@@ -201,12 +207,13 @@ async def test_running_chiller_with_no_coil_load_has_near_zero_delta_t() -> None
         "chw_iso_valve",
         "chw_pump_ss",
         "cw_pump_ss",
+        "ct_fan_ss",
     ):
         await _write(registry, "ACI-SIM-CHILLER-1", alias, True)
 
     # A finite 1,200-gallon loop needs a realistic pull-down period from its
     # 70 F idle temperature; the header must not snap directly to setpoint.
-    for _ in range(1200):
+    for _ in range(1500):
         site.tick(1.0)
         chiller.tick(1.0)
         manager.tick(1.0)

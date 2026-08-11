@@ -109,9 +109,11 @@ async def test_stuck_value_fault_on_input_freezes_what_equipment_model_sees():
     assert view.get("airflow") == pytest.approx(stuck_airflow, abs=20.0), (
         "the equipment model's airflow must not have responded to the new command while stuck_value is active"
     )
-    assert view.get("damper_position_feedback") == pytest.approx(stuck_feedback), (
-        "AV:85 feedback must hold the captured effective position while the damper command is stuck"
-    )
+    # The fault freezes the actuator command, not the blade inertia. The
+    # physical feedback may finish traveling to the captured 50% request but
+    # must never follow the later 100% BACnet write.
+    assert stuck_feedback < view.get("damper_position_feedback") <= 50.0
+    assert view.get("damper_position_feedback") == pytest.approx(50.0, abs=0.05)
 
 
 def await_get(obj):
@@ -141,7 +143,11 @@ async def test_reversed_actuator_inverts_commanded_percentage():
 
     assert view.get_commanded("damper_position_command") == pytest.approx(80.0)
     vav.tick(1.0)
-    assert view.get("damper_position_feedback") == pytest.approx(80.0)
+    first_feedback = view.get("damper_position_feedback")
+    assert 0.0 < first_feedback < 80.0
+    for _ in range(60):
+        vav.tick(1.0)
+    assert view.get("damper_position_feedback") == pytest.approx(80.0, abs=0.05)
 
 
 def test_clear_fault_and_clear_all():

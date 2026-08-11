@@ -284,6 +284,7 @@ def build_application() -> tuple[FastAPI, BacnetTransport, SimulationEngine, Fau
         diagnostics=diagnostics,
     )
     diagnostics.set_equipment_provider(lambda: engine.equipment)
+    diagnostics.set_simulation_clock(lambda: engine.simulated_seconds_elapsed)
 
     scenario_engine = ScenarioEngine(
         fault_manager, registry,

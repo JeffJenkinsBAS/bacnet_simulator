@@ -1,0 +1,52 @@
+{
+  "scenario_id": "hot_water_reheat_load_response",
+  "title": "HW Loop Parent-to-Child Reheat Load Response",
+  "description": "Starts the complete Boiler-1 circulation and firing path, establishes AHU/VAV airflow, stages two VAV reheat coils, and then removes their load so students can trace valve position through flow, differential pressure, HWS/HWR delta, boiler firing, and discharge-air temperature.",
+  "initial_conditions": {
+    "outside_air_temperature": 25,
+    "outside_air_humidity": 35
+  },
+  "events": [
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-BOILER-1", "alias": "circ_pump_ss", "value": true, "description": "Start boiler circulation" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-BOILER-1", "alias": "hw_pump_ss", "value": true, "description": "Start hot-water distribution" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-BOILER-1", "alias": "boiler_ss", "value": true, "description": "Start Boiler-1 purge and ignition sequence" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "sa_fan_ss", "value": true, "description": "Establish parent air delivery" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "airflow_setpoint", "value": 250, "description": "Request VAV-3 heating airflow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "damper_position_command", "value": 65, "description": "Open VAV-3" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-4", "alias": "airflow_setpoint", "value": 300, "description": "Request VAV-4 heating airflow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-4", "alias": "damper_position_command", "value": 65, "description": "Open VAV-4" },
+    { "time_seconds": 120, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "hw_valve_command", "value": 80, "description": "Stage the first reheat load after HW temperature and pressure establish" },
+    { "time_seconds": 240, "action": "set_value", "equipment": "ACI-SIM-VAV-4", "alias": "hw_valve_command", "value": 80, "description": "Add a second child load and observe aggregate loop response" },
+    { "time_seconds": 420, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "hw_valve_command", "value": 0, "description": "Remove the first load" },
+    { "time_seconds": 480, "action": "set_value", "equipment": "ACI-SIM-VAV-4", "alias": "hw_valve_command", "value": 0, "description": "Remove the second load and observe loop recovery and pump-only heat" }
+  ],
+  "expected_results": [
+    "Distribution flow and differential pressure appear when the HW pump proves, before burner heat is available",
+    "Each valve stage increases child coil flow/load, lowers common HWR relative to HWS, and raises the associated VAV discharge temperature",
+    "Boiler firing and heat output increase in response to the return-water/load disturbance rather than jumping instantly",
+    "Closing both valves removes coil load while pump heat, piping losses, water inventory, and temperature coast remain visible"
+  ],
+  "completion_criteria": [
+    "Student traces the causal chain from valve command to actuator stroke, branch flow, coil BTUH, HWR, boiler firing, and DAT",
+    "Student explains why pump proof alone creates flow and heat but cannot maintain HWS setpoint without a proven burner"
+  ],
+  "instructor_notes": "Recommended at 10x for a roughly 48-second demonstration. The command center's proof allowance uses simulated time and its failure confirmation uses wall time, so acceleration does not create false start failures. Use RESTART before a graded repeat when identical thermal initial conditions matter.",
+  "student_objectives": [
+    "Read a hot-water system as a coupled energy and hydraulic loop",
+    "Distinguish parent availability, child demand, actuator travel, and thermal transport delay"
+  ],
+  "difficulty": "intermediate",
+  "recommended_speed": 10,
+  "observation_points": [
+    "ACI-SIM-BOILER-MGR.hws_temp_common",
+    "ACI-SIM-BOILER-MGR.hwr_temp_common",
+    "ACI-SIM-BOILER-MGR.hws_flow_common",
+    "ACI-SIM-BOILER-MGR.hw_diff_pressure",
+    "ACI-SIM-BOILER-MGR.hw_loop_load",
+    "ACI-SIM-BOILER-MGR.boiler_heat_output",
+    "ACI-SIM-VAV-3.discharge_temp",
+    "ACI-SIM-VAV-4.discharge_temp"
+  ],
+  "prerequisites": ["Boiler purge/proof", "Two-way valve hydraulics", "Sensible air heat equation"],
+  "tags": ["hot-water", "boiler", "vav", "parent-child", "commissioning"]
+}

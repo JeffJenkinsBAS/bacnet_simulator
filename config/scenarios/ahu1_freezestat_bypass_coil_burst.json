@@ -73,5 +73,15 @@
   "student_objectives": [
     "Diagnose a compound freeze-protection failure from air temperature, valve, fan, and safety evidence",
     "Understand why a freezestat is installed as a serpentine low-limit element across the coil face rather than as a single averaging air-temperature point"
-  ]
+  ],
+  "difficulty": "advanced",
+  "recommended_speed": 60,
+  "observation_points": [
+    "ACI-SIM-AHU-1.cooling_coil_entering_air_temp",
+    "ACI-SIM-AHU-1.cooling_coil_freeze_condition",
+    "ACI-SIM-AHU-1.cooling_coil_rupture_flood",
+    "ACI-SIM-AHU-1.automatic_freezestat_trip"
+  ],
+  "prerequisites": ["Mixed-air low limit", "Freezestat safety", "Coil freeze exposure model"],
+  "tags": ["ahu", "catastrophic", "freezestat", "compound-fault"]
 }

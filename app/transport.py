@@ -20,6 +20,7 @@ than in faults.py's per-point mechanics.
 from __future__ import annotations
 
 import logging
+import math
 import random
 import time
 from typing import Optional
@@ -142,7 +143,8 @@ class NetworkGuardedApplication(Application):
         numeric_value = float(value)
         minimum, maximum = limits
         if (
-            (minimum is not None and numeric_value < minimum)
+            not math.isfinite(numeric_value)
+            or (minimum is not None and numeric_value < minimum)
             or (maximum is not None and numeric_value > maximum)
         ):
             from bacpypes3.errors import ExecutionError

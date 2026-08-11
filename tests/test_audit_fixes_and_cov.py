@@ -256,6 +256,7 @@ async def test_plant_manager_mirrors_proof_and_moves_common_header():
     await _write_commanded(registry, "ACI-SIM-CHILLER-1.chw_iso_valve", True)
     await _write_commanded(registry, "ACI-SIM-CHILLER-1.chw_pump_ss", True)
     await _write_commanded(registry, "ACI-SIM-CHILLER-1.cw_pump_ss", True)
+    await _write_commanded(registry, "ACI-SIM-CHILLER-1.ct_fan_ss", True)
     for _ in range(400):
         site.tick(1.0)
         for c in chillers:

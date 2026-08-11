@@ -30,6 +30,7 @@ class CommandCenterDiagnostics:
         failure_delay_seconds: float = FAILURE_DELAY_SECONDS,
         clock: Callable[[], float] = time.monotonic,
         equipment_provider: Callable[[], list[Any]] | None = None,
+        simulation_clock: Callable[[], float] | None = None,
     ):
         if failure_delay_seconds <= 0:
             raise ValueError("failure_delay_seconds must be greater than zero")
@@ -38,12 +39,18 @@ class CommandCenterDiagnostics:
         self.failure_delay_seconds = float(failure_delay_seconds)
         self._clock = clock
         self._equipment_provider = equipment_provider
+        self._simulation_clock = simulation_clock
         self._mismatch_started: dict[str, float] = {}
+        self._command_started_sim: dict[str, float] = {}
         self._latest_locations: list[dict[str, Any]] = []
         self._validate_layout()
 
     def set_equipment_provider(self, provider: Callable[[], list[Any]]) -> None:
         self._equipment_provider = provider
+
+    def set_simulation_clock(self, provider: Callable[[], float]) -> None:
+        """Attach simulated time after the engine is constructed."""
+        self._simulation_clock = provider
 
     def _equipment_by_id(self) -> dict[str, Any]:
         if self._equipment_provider is None:
@@ -104,6 +111,11 @@ class CommandCenterDiagnostics:
             group_id = location.get("group_id")
             if diagnostic_type == "binary_command_status":
                 aliases = (diagnostic.get("command_alias"), diagnostic.get("status_alias"))
+                expected = diagnostic.get("expected_proof_seconds", 0.0)
+                if not isinstance(expected, (int, float)) or expected < 0:
+                    raise ValueError(
+                        f"location '{location_id}' expected_proof_seconds must be nonnegative"
+                    )
             else:
                 aliases = (diagnostic.get("setpoint_alias"), diagnostic.get("airflow_alias"))
             if not group_id or not all(aliases):
@@ -141,26 +153,51 @@ class CommandCenterDiagnostics:
         status_alias = diagnostic["status_alias"]
         command = self._get(group_id, command_alias) >= 0.5
         status = self._get(group_id, status_alias) >= 0.5
+        expected_proof_seconds = float(diagnostic.get("expected_proof_seconds", 0.0))
+        sim_now = self._simulation_clock() if self._simulation_clock is not None else None
+        startup_elapsed = 0.0
 
         if not command:
+            self._command_started_sim.pop(location["id"], None)
             state, mismatch_seconds = self._timed_state(
                 location["id"], mismatch=False, normal_state="idle", now=now
             )
             message = "Command is off."
-        else:
+        elif status:
+            self._command_started_sim.pop(location["id"], None)
             state, mismatch_seconds = self._timed_state(
-                location["id"], mismatch=not status, normal_state="running", now=now
+                location["id"], mismatch=False, normal_state="running", now=now
             )
-            if status:
-                message = "Command and run status agree."
-            elif state == "failure":
+            message = "Command and run status agree."
+        else:
+            if sim_now is not None:
+                started = self._command_started_sim.setdefault(location["id"], sim_now)
+                startup_elapsed = max(0.0, sim_now - started)
+            else:
+                # Backward-compatible wall-time behavior for standalone tests
+                # and integrations that have not attached an engine clock.
+                startup_elapsed = expected_proof_seconds
+            if startup_elapsed < expected_proof_seconds:
+                self._mismatch_started.pop(location["id"], None)
+                state = "starting"
+                mismatch_seconds = 0.0
                 message = (
-                    f"Command is on but status remained off for "
-                    f"{mismatch_seconds:.1f} real seconds."
+                    f"Expected start sequence in progress ({startup_elapsed:.1f}/"
+                    f"{expected_proof_seconds:.0f} simulated seconds)."
                 )
             else:
+                state, mismatch_seconds = self._timed_state(
+                    location["id"], mismatch=True, normal_state="running", now=now
+                )
+            if state == "failure":
                 message = (
-                    f"Waiting for run proof ({mismatch_seconds:.1f}/"
+                    f"Command is on but status remained off after its "
+                    f"{expected_proof_seconds:.0f}-simulated-second start allowance and for "
+                    f"{mismatch_seconds:.1f} real seconds."
+                )
+            elif state == "tracking":
+                message = (
+                    f"Start allowance expired; confirming failed proof ({mismatch_seconds:.1f}/"
                     f"{self.failure_delay_seconds:.0f} real seconds)."
                 )
 
@@ -273,6 +310,8 @@ class CommandCenterDiagnostics:
             sources=sources,
             message=message,
             diagnostic_type=diagnostic_type,
+            expected_proof_seconds=expected_proof_seconds,
+            startup_elapsed_seconds=startup_elapsed,
         )
 
     def _evaluate_airflow(self, location: dict[str, Any], now: float) -> dict[str, Any]:
@@ -417,6 +456,8 @@ class CommandCenterDiagnostics:
         message: str,
         air_delivery: dict[str, Any] | None = None,
         diagnostic_type: str | None = None,
+        expected_proof_seconds: float | None = None,
+        startup_elapsed_seconds: float | None = None,
     ) -> dict[str, Any]:
         return {
             "id": location["id"],
@@ -431,6 +472,11 @@ class CommandCenterDiagnostics:
             "diagnostic_type": diagnostic_type or location["diagnostic"]["type"],
             "mismatch_seconds": round(mismatch_seconds, 1),
             "threshold_seconds": self.failure_delay_seconds,
+            "expected_proof_seconds": expected_proof_seconds,
+            "startup_elapsed_seconds": (
+                round(startup_elapsed_seconds, 1)
+                if startup_elapsed_seconds is not None else None
+            ),
             "values": values,
             "sources": sources,
             "air_delivery": air_delivery,
@@ -504,6 +550,9 @@ class CommandCenterDiagnostics:
             state: sum(1 for location in self._latest_locations if location["state"] == state)
             for state in ("running", "failure", "tracking", "inhibited", "idle")
         }
+        starting = sum(1 for location in self._latest_locations if location["state"] == "starting")
+        if starting:
+            summary["starting"] = starting
         summary["failures"] = summary["failure"]
         air_summary = {
             mode: sum(

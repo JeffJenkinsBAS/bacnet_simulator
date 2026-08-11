@@ -12,8 +12,8 @@ existing WebCTRL/EIKON programs (AHU, Chiller Manager, Boiler Manager,
 VAV-1, VAV-2, Simulation Manager) exactly as real field hardware would.
 
 **Status:** Phases 1–6a complete plus audit-and-hardening passes
-(2026-07-17 through 2026-08-10). The configured 355-point release passes
-**171 automated tests**. The historical 329-point release was verified live
+(2026-07-17 through 2026-08-11). The configured 355-point release passes
+**194 automated tests**. The historical 329-point release was verified live
 on the Windows bench service before this additive HW-loop telemetry release.
 The historical 321-point baseline passed 129 tests. Core BACnet behavior has
 been verified against real
@@ -145,11 +145,11 @@ Evidence:
   high-static and freezestat devices, that
   give real meaning to every named fault a technician needs to practice
   diagnosing.
-- **Runs timed training scenarios** — six shipped, each a genuinely
-  different failure pattern (an interlock trip, a stuck actuator, a slow
-  sensor drift, a failed-to-prove boiler, a frozen sensor, a whole-device
-  comm loss) — executed against simulated time so a scenario behaves
-  identically whether run at 1x or 20x speed.
+- **Runs timed training scenarios** — ten shipped, including interlock and
+  compound-safety failures, stuck actuators, sensor drift/freeze,
+  failed-to-prove equipment, whole-device communications loss, and complete
+  CHW/HW parent-to-child load-response labs. Events execute against bounded
+  simulated time so sequencing remains ordered from 1x through 60x.
 - **Lets an instructor ask for scenarios and faults in plain language**
   through a local Ollama LLM, with every proposed action validated and
   previewed before anything actually changes — the LLM never bypasses

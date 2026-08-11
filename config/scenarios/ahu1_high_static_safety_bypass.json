@@ -193,5 +193,16 @@
   "student_objectives": [
     "Distinguish a control sensor from an independent hardwired safety",
     "Observe how closed terminal dampers, a failed-low sensor, and a bypassed safety can combine into a catastrophic fault"
-  ]
+  ],
+  "difficulty": "advanced",
+  "recommended_speed": 10,
+  "observation_points": [
+    "ACI-SIM-AHU-1.duct_static_pressure",
+    "ACI-SIM-AHU-1.duct_static_pressure_setpoint",
+    "ACI-SIM-AHU-1.sa_fan_speed_feedback",
+    "ACI-SIM-AHU-1.automatic_high_static_trip",
+    "ACI-SIM-AHU-1.duct_structural_failure"
+  ],
+  "prerequisites": ["Duct-static PID", "Independent high-static safety", "Fan/damper pressure relationship"],
+  "tags": ["ahu", "duct-static", "catastrophic", "compound-fault"]
 }

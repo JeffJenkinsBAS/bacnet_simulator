@@ -137,7 +137,13 @@ async def test_read_only_airflow_limits_and_damper_feedback_are_published():
     assert view.get("heating_max_airflow") == 500.0
     assert view.get("cooling_min_airflow") == 300.0
     assert view.get("cooling_max_airflow") == 1000.0
-    assert view.get("damper_position_feedback") == 42.0
+    first_feedback = view.get("damper_position_feedback")
+    assert 0.0 < first_feedback < 42.0
+
+    for _ in range(30):
+        vav.tick(1.0)
+
+    assert view.get("damper_position_feedback") == pytest.approx(42.0, abs=0.1)
 
     expected_instances = {
         "heating_min_airflow": 81,

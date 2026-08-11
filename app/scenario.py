@@ -4,7 +4,7 @@ Scenario Engine (Phase 4).
 A scenario is initial conditions plus a timeline of events, executed
 against simulated time (SimulationEngine.simulated_seconds_elapsed), not
 wall-clock time -- so a scenario behaves identically whether run at 1x or
-20x simulation speed.
+60x simulation speed.
 
 "Force Value" / "Release Value" (the Instructor Panel feature) is
 implemented as the exact same mechanism as the `stuck_value` fault type in
@@ -22,27 +22,82 @@ import asyncio
 import glob
 import json
 import logging
+import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.faults import FaultManager, FaultType
 
 logger = logging.getLogger("aci_sim.scenario")
 
 FORCE_ID_PREFIX = "force:"
+# These are deliberate equipment-model fault hooks rather than BACnet points.
+# They let a lesson distinguish physical actuator/safety behavior from a bad
+# displayed point without expanding the deployed object catalog.
+VIRTUAL_FAULT_TARGETS = {
+    ("ACI-SIM-AHU-1", "economizer_damper_feedback"),
+    ("ACI-SIM-AHU-1", "automatic_high_static_trip"),
+    ("ACI-SIM-AHU-1", "automatic_freezestat_trip"),
+}
 
 
 class ScenarioEvent(BaseModel):
-    time_seconds: float
-    action: str  # "set_fault" | "clear_fault" | "set_value" | "release_value" | "set_weather"
+    time_seconds: float = Field(ge=0.0)
+    action: Literal["set_fault", "clear_fault", "set_value", "release_value", "set_weather"]
     equipment: Optional[str] = None  # group_id
     alias: Optional[str] = None
     fault: Optional[str] = None  # FaultType name, for set_fault
     value: Optional[Any] = None
     parameters: dict[str, Any] = Field(default_factory=dict)
     description: str = ""
+
+    @model_validator(mode="after")
+    def validate_action_contract(self):
+        is_fault = self.action in ("set_fault", "clear_fault")
+        if is_fault:
+            if not self.fault:
+                raise ValueError(f"{self.action} requires fault")
+            try:
+                fault_type = FaultType(self.fault)
+            except ValueError as exc:
+                raise ValueError(f"unknown fault type '{self.fault}'") from exc
+            is_transport = fault_type in {
+                FaultType.device_offline,
+                FaultType.slow_response,
+                FaultType.write_rejected,
+                FaultType.intermittent_comm,
+            }
+            if is_transport and (self.equipment is not None or self.alias is not None):
+                raise ValueError(f"{fault_type.value} is device-wide and cannot name a point")
+            if not is_transport and (not self.equipment or not self.alias):
+                raise ValueError(f"{fault_type.value} requires equipment and alias")
+            required = (
+                {
+                    FaultType.offset: "offset",
+                    FaultType.drift: "rate_per_second",
+                    FaultType.forced_status: "value",
+                }.get(fault_type)
+                if self.action == "set_fault"
+                else None
+            )
+            supplied = {**self.parameters, **({"value": self.value} if self.value is not None else {})}
+            if required and required not in supplied:
+                raise ValueError(f"{fault_type.value} requires parameter '{required}'")
+        elif self.action in ("set_value", "release_value"):
+            if not self.equipment or not self.alias:
+                raise ValueError(f"{self.action} requires equipment and alias")
+            if self.action == "set_value" and self.value is None:
+                raise ValueError("set_value requires value")
+        elif self.action == "set_weather":
+            allowed = {"outside_air_temperature", "outside_air_humidity"}
+            if not (allowed & self.parameters.keys()):
+                raise ValueError("set_weather requires an outside-air temperature or humidity parameter")
+            unknown = set(self.parameters) - allowed
+            if unknown:
+                raise ValueError(f"set_weather has unknown parameters: {', '.join(sorted(unknown))}")
+        return self
 
 
 class Scenario(BaseModel):
@@ -55,6 +110,29 @@ class Scenario(BaseModel):
     completion_criteria: list[str] = Field(default_factory=list)
     instructor_notes: str = ""
     student_objectives: list[str] = Field(default_factory=list)
+    difficulty: Literal["introductory", "intermediate", "advanced"] = "intermediate"
+    recommended_speed: float = Field(default=1.0, ge=0.1, le=60.0)
+    observation_points: list[str] = Field(default_factory=list)
+    prerequisites: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+    @field_validator("scenario_id")
+    @classmethod
+    def validate_scenario_id(cls, value: str) -> str:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", value):
+            raise ValueError("scenario_id must contain only lowercase letters, numbers, '_' or '-'")
+        return value
+
+    @model_validator(mode="after")
+    def validate_timeline(self):
+        times = [event.time_seconds for event in self.events]
+        if times != sorted(times):
+            raise ValueError("scenario events must be ordered by nondecreasing time_seconds")
+        return self
+
+    @property
+    def duration_seconds(self) -> float:
+        return max((event.time_seconds for event in self.events), default=0.0)
 
 
 class ScenarioRunState(BaseModel):
@@ -92,12 +170,18 @@ class ScenarioEngine:
         self._scenario_fault_ids: list[str] = []  # faults created by the running scenario, for clean teardown
         self._priority_overrides: set[tuple[str, str]] = set()
         self._pending_priority_writes: set[asyncio.Task] = set()
+        self._saved_site_conditions: Optional[tuple[float, float]] = None
 
     def load_all(self, directory: Path) -> None:
+        loaded: dict[str, Scenario] = {}
         for path in sorted(glob.glob(str(directory / "*.json"))):
             with open(path) as f:
                 scenario = Scenario.model_validate(json.load(f))
-            self.scenarios[scenario.scenario_id] = scenario
+            if scenario.scenario_id in loaded:
+                raise ValueError(f"duplicate scenario_id '{scenario.scenario_id}' in {path}")
+            self._validate_catalog_references(scenario)
+            loaded[scenario.scenario_id] = scenario
+        self.scenarios = loaded
         logger.info("Loaded %d scenarios from %s", len(self.scenarios), directory)
 
     def list_scenarios(self) -> list[Scenario]:
@@ -117,6 +201,7 @@ class ScenarioEngine:
         """
         if scenario.scenario_id in self.scenarios:
             raise ValueError(f"scenario_id '{scenario.scenario_id}' already exists")
+        self._validate_catalog_references(scenario)
         self.scenarios[scenario.scenario_id] = scenario
         logger.info("Registered runtime scenario: %s (%s)", scenario.scenario_id, scenario.title)
         if persist_to is not None:
@@ -137,6 +222,12 @@ class ScenarioEngine:
         self.stop()  # clear anything currently running first
 
         scenario = self.scenarios[scenario_id]
+        site = self._find_equipment("ACI-SIM-SITE")
+        if site is not None:
+            self._saved_site_conditions = (
+                float(site.target_oa_temp_f),
+                float(site.target_oa_humidity_pct),
+            )
         self._run = ScenarioRunState(
             scenario_id=scenario_id, status="running", started_at_sim_seconds=self._get_sim_seconds()
         )
@@ -153,6 +244,11 @@ class ScenarioEngine:
         for fault_id in self._scenario_fault_ids:
             self.fault_manager.clear_fault(fault_id)
         self._scenario_fault_ids.clear()
+        if self._saved_site_conditions is not None:
+            site = self._find_equipment("ACI-SIM-SITE")
+            if site is not None:
+                site.target_oa_temp_f, site.target_oa_humidity_pct = self._saved_site_conditions
+            self._saved_site_conditions = None
         if self._run is not None:
             logger.info("Scenario stopped: %s", self._run.scenario_id)
         self._run = None
@@ -197,6 +293,8 @@ class ScenarioEngine:
         if self._run is None or self._run.status != "running":
             return
         scenario = self.scenarios[self._run.scenario_id]
+        # The engine advances its public clock after each bounded physics
+        # substep, so this observes 0, 1, 2... even during a 60x wall tick.
         elapsed = self._get_sim_seconds() - self._run.started_at_sim_seconds
 
         for index, event in enumerate(scenario.events):
@@ -209,6 +307,50 @@ class ScenarioEngine:
         if len(self._run.fired_event_indices) == len(scenario.events) and scenario.events:
             self._run.status = "completed"
             logger.info("Scenario completed (all events fired): %s", scenario.scenario_id)
+
+    def _configured_points(self) -> dict[str, Any]:
+        live = self.registry.all_points()
+        if live:
+            return live
+        return {
+            f"{group.group_id}.{point.alias}": type("ConfiguredPoint", (), {"config": point})()
+            for group in getattr(self.registry, "groups", [])
+            for point in group.points
+        }
+
+    def _validate_catalog_references(self, scenario: Scenario) -> None:
+        points = self._configured_points()
+        for index, event in enumerate(scenario.events):
+            if event.action == "set_weather":
+                continue
+            if event.action in ("set_fault", "clear_fault"):
+                fault_type = FaultType(event.fault)
+                if fault_type in {
+                    FaultType.device_offline,
+                    FaultType.slow_response,
+                    FaultType.write_rejected,
+                    FaultType.intermittent_comm,
+                }:
+                    continue
+            key = f"{event.equipment}.{event.alias}"
+            if key not in points and (event.equipment, event.alias) not in VIRTUAL_FAULT_TARGETS:
+                raise ValueError(f"scenario '{scenario.scenario_id}' event {index} references unknown point '{key}'")
+            if event.action in ("set_value", "release_value"):
+                config = points[key].config
+                if not config.writable:
+                    raise ValueError(f"scenario '{scenario.scenario_id}' event {index} cannot write read-only point '{key}'")
+                if event.action == "set_value" and not isinstance(event.value, bool):
+                    try:
+                        numeric = float(event.value)
+                    except (TypeError, ValueError) as exc:
+                        raise ValueError(f"scenario '{scenario.scenario_id}' event {index} requires a numeric value") from exc
+                    if config.minimum is not None and numeric < config.minimum:
+                        raise ValueError(f"scenario '{scenario.scenario_id}' event {index} is below '{key}' minimum")
+                    if config.maximum is not None and numeric > config.maximum:
+                        raise ValueError(f"scenario '{scenario.scenario_id}' event {index} is above '{key}' maximum")
+        for key in scenario.observation_points:
+            if key not in points and tuple(key.split(".", 1)) not in VIRTUAL_FAULT_TARGETS:
+                raise ValueError(f"scenario '{scenario.scenario_id}' observes unknown point '{key}'")
 
     def _fire_event(self, scenario: Scenario, event: ScenarioEvent) -> None:
         logger.info(
@@ -353,6 +495,7 @@ class ScenarioEngine:
         )
         return {
             "running": self._run.status == "running",
+            "effects_active": True,
             "status": self._run.status,
             "scenario_id": scenario.scenario_id,
             "title": scenario.title,
@@ -364,4 +507,9 @@ class ScenarioEngine:
                 if next_event else None
             ),
             "expected_results": scenario.expected_results,
+            "completion_criteria": scenario.completion_criteria,
+            "recommended_speed": scenario.recommended_speed,
+            "duration_seconds": scenario.duration_seconds,
+            "observation_points": scenario.observation_points,
+            "cleanup_required": True,
         }

@@ -37,5 +37,10 @@
   "student_objectives": [
     "Recognize a device-level communication failure pattern versus a point-level fault",
     "Practice the correct triage order: confirm scope of the problem before troubleshooting specifics"
-  ]
+  ],
+  "difficulty": "introductory",
+  "recommended_speed": 10,
+  "observation_points": [],
+  "prerequisites": ["BACnet device versus object scope"],
+  "tags": ["bacnet", "communications", "triage"]
 }

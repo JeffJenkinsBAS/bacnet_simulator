@@ -19,16 +19,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.equipment.base import EquipmentModel
+from app.faults import FaultType
 from app.registry import PointRegistry
 
 
 @dataclass
 class BoilerParameters:
-    # Run proof is intentionally accelerated so a normal start proves before
-    # the command center's 15-real-second failure timer. Water temperature
-    # still warms on the slower thermal time constant below.
-    purge_seconds: float = 6.0
-    ignition_seconds: float = 4.0
+    # Representative gas-boiler pre-purge and trial-for-ignition sequence.
+    # OEM/site-specific values remain parameter overrides.
+    purge_seconds: float = 30.0
+    ignition_seconds: float = 5.0
     hws_setpoint_f: float = 180.0
     hws_time_constant_seconds: float = 12.0
     pump_start_delay_seconds: float = 3.0
@@ -118,10 +118,23 @@ class BoilerModel(EquipmentModel):
     def circ_pump_running(self) -> bool:
         return self._circ_pump_running
 
+    def _forced_off(self, alias: str) -> bool:
+        parameters = self.registry.point_fault_parameters(alias, FaultType.forced_status)
+        return parameters is not None and not bool(parameters.get("value"))
+
     def tick(self, dt_seconds: float) -> None:
-        ss = self.registry.get_commanded("boiler_ss") == 1.0
+        unit_ss = self.registry.get_commanded("boiler_ss") == 1.0
+        ss = unit_ss
         if self.manager_registry is not None and self.manager_enable_alias is not None:
             ss = ss or (self.manager_registry.get_commanded(self.manager_enable_alias) == 1.0)
+        # A stuck-false unit start input represents a failed local permissive
+        # or ignition chain. The manager enable cannot bypass that physical
+        # fault merely because it is another logical source of the request.
+        stuck_start = self.registry.point_fault_parameters(
+            "boiler_ss", FaultType.stuck_value
+        )
+        if stuck_start is not None and not bool(stuck_start.get("value", unit_ss)):
+            ss = False
         circ_pump_cmd = self.registry.get_commanded("circ_pump_ss") == 1.0
         hw_pump_cmd = self.registry.get_commanded("hw_pump_ss") == 1.0
         hws_reset = self.registry.get_commanded("hws_stpt_reset")
@@ -132,21 +145,27 @@ class BoilerModel(EquipmentModel):
             self._circ_pump_frac, 1.0 if circ_pump_cmd else 0.0, dt_seconds, self.params.pump_start_delay_seconds
         )
         self._circ_pump_running = self._circ_pump_frac > 0.5
+        if self._forced_off("circ_pump_status"):
+            self._circ_pump_running = False
         self._hw_pump_frac = self.approach(
             self._hw_pump_frac, 1.0 if hw_pump_cmd else 0.0, dt_seconds, self.params.pump_start_delay_seconds
         )
         self._hw_pump_running = self._hw_pump_frac > 0.5
+        if self._forced_off("hw_pump_status"):
+            self._hw_pump_running = False
 
         # Flow interlock: no circulating pump -> no ignition permit (real
         # boilers lock out on low-water/no-flow); losing the pump mid-run
         # drops proof and restarts the purge+ignition sequence.
-        if ss and self._circ_pump_running:
+        physical_proof_failure = self._forced_off("boiler_ok")
+        if ss and self._circ_pump_running and not physical_proof_failure:
             self._enabled_seconds += dt_seconds
         else:
             self._enabled_seconds = 0.0
         self._proven = (
             ss and self._circ_pump_running
             and self._enabled_seconds >= (self.params.purge_seconds + self.params.ignition_seconds)
+            and not physical_proof_failure
         )
 
         setpoint = (
@@ -176,13 +195,21 @@ class BoilerModel(EquipmentModel):
                         required_btuh / max(self.params.nominal_output_capacity_btuh, 1.0),
                     ),
                 )
-            self._firing_fraction = self.approach(
-                self._firing_fraction,
-                target_firing,
-                dt_seconds,
-                self.params.firing_time_constant_seconds,
+            self._firing_fraction = (
+                self.approach(
+                    self._firing_fraction,
+                    target_firing,
+                    dt_seconds,
+                    self.params.firing_time_constant_seconds,
+                )
+                if self._proven
+                else 0.0
             )
-            useful_heat = self._firing_fraction * self.params.nominal_output_capacity_btuh
+            useful_heat = (
+                self._firing_fraction * self.params.nominal_output_capacity_btuh
+                if self._proven
+                else 0.0
+            )
             maximum_leaving = setpoint + self.params.maximum_leaving_temp_above_setpoint_f
             useful_heat = min(
                 useful_heat,
@@ -195,11 +222,15 @@ class BoilerModel(EquipmentModel):
                 else self._hwr_temp
             )
         else:
-            self._firing_fraction = self.approach(
-                self._firing_fraction,
-                1.0 if self._proven else 0.0,
-                dt_seconds,
-                self.params.firing_time_constant_seconds,
+            self._firing_fraction = (
+                self.approach(
+                    self._firing_fraction,
+                    1.0,
+                    dt_seconds,
+                    self.params.firing_time_constant_seconds,
+                )
+                if self._proven
+                else 0.0
             )
             self._heat_output_btuh = 0.0
             target = setpoint if self._proven else self.params.standby_temp_f

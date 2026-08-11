@@ -11,10 +11,10 @@
       "time_seconds": 0,
       "action": "set_fault",
       "equipment": "ACI-SIM-BOILER-2",
-      "alias": "boiler_ok",
-      "fault": "forced_status",
+      "alias": "boiler_ss",
+      "fault": "stuck_value",
       "value": false,
-      "description": "Boiler-2's proof output is forced permanently off regardless of the normal purge/ignition timing"
+      "description": "Represent a failed start/ignition-permissive circuit: BACnet accepts the start command but the burner sequence never receives it"
     },
     {
       "time_seconds": 30,
@@ -51,7 +51,7 @@
   ],
   "expected_results": [
     "Boiler Manager's Enable Boiler2 command and Boiler-2's own Boiler S/S command both show on",
-    "Boiler-2 OK never transitions to proven, even well past the normal purge+ignition delay",
+    "Boiler-2 OK never transitions to proven, firing rate remains zero, and Boiler-2 adds no heat even well past the normal purge+ignition delay",
     "WebCTRL should eventually alarm on failed-to-prove, matching how a real ignition lockout would present",
     "Boiler-1 and Boiler-3 are unaffected -- this is isolated to one unit"
   ],
@@ -59,9 +59,22 @@
     "Student recognizes the failure pattern (commanded on, never proves) rather than assuming a comms failure",
     "Student checks the other two boilers to confirm this is unit-specific, not a Boiler Manager problem"
   ],
-  "instructor_notes": "The fault is armed before the command sequence starts, so there's no race condition in how the scenario fires relative to Boiler Manager's own staging logic in WebCTRL.",
+  "instructor_notes": "The failure is applied to the simulated start/ignition input rather than merely forcing a proof sensor off. That prevents false-status training in which a hidden boiler would still fire and heat the loop. Pump flow and pump heat remain physically present. Use STOP/RESET after diagnosis.",
   "student_objectives": [
     "Diagnose a failed-to-prove condition on a specific piece of staged equipment",
     "Correctly scope the problem to one unit rather than the whole boiler plant"
-  ]
+  ],
+  "difficulty": "intermediate",
+  "recommended_speed": 1,
+  "observation_points": [
+    "ACI-SIM-BOILER-2.boiler_ss",
+    "ACI-SIM-BOILER-2.boiler_ok",
+    "ACI-SIM-BOILER-2.firing_rate",
+    "ACI-SIM-BOILER-MGR.boiler_heat_output",
+    "ACI-SIM-BOILER-MGR.hws_temp_common",
+    "ACI-SIM-BOILER-MGR.hwr_temp_common",
+    "ACI-SIM-BOILER-MGR.hw_pump_heat"
+  ],
+  "prerequisites": ["Boiler purge and ignition timing", "Command-versus-proof diagnostics"],
+  "tags": ["boiler", "failed-to-prove", "hot-water", "parent-child"]
 }

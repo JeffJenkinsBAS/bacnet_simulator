@@ -666,6 +666,12 @@ def create_app(
                 {
                     "scenario_id": s.scenario_id, "title": s.title, "description": s.description,
                     "event_count": len(s.events), "student_objectives": s.student_objectives,
+                    "duration_seconds": s.duration_seconds,
+                    "recommended_speed": s.recommended_speed,
+                    "difficulty": s.difficulty,
+                    "observation_points": s.observation_points,
+                    "prerequisites": s.prerequisites,
+                    "tags": s.tags,
                 }
                 for s in scenario_engine.list_scenarios()
             ]

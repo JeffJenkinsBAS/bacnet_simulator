@@ -30,6 +30,8 @@ class ZoneParameters:
     initial_humidity_pct: float = 45.0
     infiltration_ach_fan_on: float = 0.05
     infiltration_ach_fan_off: float = 0.15
+    pressure_reference_inwc: float = 0.05
+    maximum_pressure_infiltration_multiplier: float = 3.0
     adjacent_mixing_cfm: float = 20.0
     adjacent_temp_f: float = 72.0
     adjacent_humidity_pct: float = 45.0
@@ -112,14 +114,30 @@ class ZoneModel:
         discharge_temp_f: float,
         supply_humidity_ratio: float,
         ahu_supply_proven: bool,
+        building_pressure_inwc: float = 0.0,
     ) -> tuple[float, float]:
         dt_hours = max(0.0, float(dt_seconds)) / 3600.0
         supply_cfm = max(0.0, float(supply_airflow_cfm)) if ahu_supply_proven else 0.0
-        infiltration_ach = (
+        base_infiltration_ach = (
             self.params.infiltration_ach_fan_on
             if ahu_supply_proven
             else self.params.infiltration_ach_fan_off
         )
+        # Negative building pressure draws additional unconditioned air
+        # through the envelope. Positive pressure suppresses infiltration;
+        # exfiltration is not treated as an outdoor sensible/moisture source.
+        # The square-root relation follows the usual orifice-flow dependence
+        # on differential pressure without requiring a full crack network.
+        pressure_reference = max(0.001, self.params.pressure_reference_inwc)
+        pressure_ratio = abs(float(building_pressure_inwc)) / pressure_reference
+        if building_pressure_inwc < 0.0:
+            pressure_multiplier = min(
+                self.params.maximum_pressure_infiltration_multiplier,
+                1.0 + pressure_ratio**0.5,
+            )
+        else:
+            pressure_multiplier = max(0.10, 1.0 - pressure_ratio**0.5)
+        infiltration_ach = max(0.0, base_infiltration_ach * pressure_multiplier)
         infiltration_cfm = max(0.0, infiltration_ach * self.volume_ft3 / 60.0)
         mixing_cfm = max(0.0, self.params.adjacent_mixing_cfm)
 
@@ -219,6 +237,8 @@ class ZoneModel:
             "internal_gain_btuh": round(internal_gain, 1),
             "solar_gain_btuh": round(solar_gain, 1),
             "infiltration_cfm": round(infiltration_cfm, 1),
+            "infiltration_ach": round(infiltration_ach, 3),
+            "building_pressure_inwc": round(float(building_pressure_inwc), 4),
         }
         self.runtime_seconds += max(0.0, float(dt_seconds))
         return new_temp, new_rh

@@ -7,6 +7,9 @@
     "outside_air_humidity": 55
   },
   "events": [
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-BOILER-1", "alias": "circ_pump_ss", "value": true, "description": "Start Boiler-1 circulation" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-BOILER-1", "alias": "hw_pump_ss", "value": true, "description": "Start the distribution pump" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-BOILER-1", "alias": "boiler_ss", "value": true, "description": "Start Boiler-1 so reheat has a real parent heat source" },
     {
       "time_seconds": 0,
       "action": "set_value",
@@ -16,26 +19,71 @@
       "description": "AHU-1 supply fan on for airflow to exist at VAV-1"
     },
     {
-      "time_seconds": 30,
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-1",
+      "alias": "airflow_setpoint",
+      "value": 500,
+      "description": "Establish useful VAV-1 airflow"
+    },
+    {
+      "time_seconds": 0,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-1",
+      "alias": "damper_position_command",
+      "value": 65,
+      "description": "Open VAV-1 for an observable coil response"
+    },
+    {
+      "time_seconds": 120,
+      "action": "set_value",
+      "equipment": "ACI-SIM-VAV-1",
+      "alias": "hw_valve_command",
+      "value": 75,
+      "description": "Open reheat after the parent HW loop has established temperature and pressure"
+    },
+    {
+      "time_seconds": 240,
       "action": "set_fault",
       "equipment": "ACI-SIM-VAV-1",
       "alias": "hw_valve_command",
       "fault": "stuck_value",
-      "description": "Reheat valve actuator seizes at whatever position it's at right now -- WebCTRL's commands still land on the real BACnet object, the actuator just doesn't move"
+      "description": "Reheat valve actuator seizes at its established heating position -- WebCTRL's commands still land on the real BACnet object, but the actuator no longer moves"
+    },
+    {
+      "time_seconds": 270,
+      "action": "release_value",
+      "equipment": "ACI-SIM-VAV-1",
+      "alias": "hw_valve_command",
+      "description": "Relinquish the instructor command so WebCTRL/default can command closed while the simulated actuator remains physically stuck"
     }
   ],
   "expected_results": [
     "The HW Valve object itself keeps accepting new WriteProperty commands from WebCTRL and shows the commanded value changing",
-    "VAV-1 Discharge Temp stops responding to those commands and holds near whatever it was when the fault activated",
+    "VAV-1 Discharge Temp and HW flow remain consistent with the captured 75% physical position after the displayed command is relinquished",
+    "The common HW loop load and HWS/HWR delta continue to include the stuck-open VAV coil",
     "A student comparing 'commanded' vs 'actual discharge temp' should see the mismatch even though the point looks normal on a quick glance"
   ],
   "completion_criteria": [
     "Student identifies that the command point and the resulting physical behavior have diverged, rather than assuming the valve command itself is wrong",
     "Student proposes a field verification step (e.g. checking actuator position manually) rather than only re-checking software"
   ],
-  "instructor_notes": "This fault does NOT change what WebCTRL reads back from the HW Valve object -- that's intentional. The point of this exercise is to teach that a healthy-looking command point doesn't guarantee the field device is actually responding.",
+  "instructor_notes": "This lesson now starts Boiler-1, both required pump paths, the AHU, and VAV airflow before opening reheat; the terminal cannot create heat without its parent systems. The fault does not change the BACnet command object's value. STOP relinquishes scenario commands and restores weather targets, but thermal inventory coasts; use RESTART for a deterministic next lab.",
   "student_objectives": [
     "Distinguish a software/network problem from a mechanical actuator failure using only available BACnet points",
     "Understand why 'the point shows the right value' isn't proof the equipment did what was commanded"
-  ]
+  ],
+  "difficulty": "advanced",
+  "recommended_speed": 1,
+  "observation_points": [
+    "ACI-SIM-VAV-1.hw_valve_command",
+    "ACI-SIM-VAV-1.discharge_temp",
+    "ACI-SIM-VAV-1.airflow",
+    "ACI-SIM-BOILER-MGR.hws_flow_common",
+    "ACI-SIM-BOILER-MGR.hws_temp_common",
+    "ACI-SIM-BOILER-MGR.hwr_temp_common",
+    "ACI-SIM-BOILER-MGR.hw_loop_load"
+  ],
+  "prerequisites": ["Boiler proof and pump interlocks", "VAV airflow and reheat sequence"],
+  "tags": ["vav", "actuator", "hot-water", "parent-child"]
 }

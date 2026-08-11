@@ -40,6 +40,9 @@ from app.registry import PointRegistry
 @dataclass
 class AhuParameters:
     fan_start_time_constant_seconds: float = 3.0
+    fan_proof_delay_seconds: float = 3.0
+    return_fan_start_time_constant_seconds: float = 3.0
+    return_fan_proof_delay_seconds: float = 3.0
     economizer_time_constant_seconds: float = 15.0
     plenum_idle_time_constant_seconds: float = 300.0  # MA drift rate with fans off (no forced airflow)
     coil_time_constant_seconds: float = 45.0
@@ -48,6 +51,7 @@ class AhuParameters:
     cooling_coil_design_flow_gpm: float = 300.0
     cooling_coil_max_water_delta_f: float = 14.0
     heating_valve_time_constant_seconds: float = 45.0
+    preheat_valve_time_constant_seconds: float = 45.0
     valve_overlap_threshold_pct: float = 10.0
     valve_changeover_grace_seconds: float = 60.0
     valve_change_rate_threshold_pct: float = 0.25
@@ -73,17 +77,19 @@ class AhuParameters:
     # the entering-air-to-entering-water temperature difference.  Using an
     # effectiveness relation (rather than a hard CHWS+approach floor) lets
     # 55-70 F water still absorb sensible heat when it is colder than the air.
-    cooling_coil_design_effectiveness: float = 0.75
+    cooling_coil_design_effectiveness: float = 0.72
     # A characterized/equal-percentage hydronic valve offsets the convex
     # coil curve so installed heat output is approximately linear with the
-    # actuator command. 20.5 F of design rise makes a 50% valve command
-    # settle near 85 F SAT at normal 70-72 F mixed/return conditions.
-    heating_coil_design_rise_f: float = 20.5
+    # actuator command. 23 F of design rise makes a 50% valve command settle
+    # near 85 F SAT at normal mixed-air conditions after speed-dependent fan
+    # heat is included.
+    heating_coil_design_rise_f: float = 23.0
     heating_coil_design_flow_gpm: float = 18.0
     preheat_coil_design_flow_gpm: float = 12.0
     hot_water_design_delta_f: float = 20.0
     hot_water_design_dp_psi: float = 4.0
     hot_water_valve_rangeability: float = 20.0
+    hot_water_minimum_return_approach_f: float = 10.0
     fan_heat_f: float = 2.0
     minimum_sa_temp_setpoint_f: float = 45.0
     maximum_sa_temp_setpoint_f: float = 95.0
@@ -153,6 +159,10 @@ class AhuModel(EquipmentModel):
 
         self.fan_running = False
         self._fan_running_frac = 0.0
+        self._sa_fan_proof_elapsed_seconds = 0.0
+        self._ra_fan_running_frac = 0.0
+        self._ra_fan_proof_elapsed_seconds = 0.0
+        self._ra_fan_running = False
         self._ma_temp = 60.0
         self._cooling_coil_entering_air_temp = 60.0
         self._ra_temp = self.params.ra_setpoint_f
@@ -198,6 +208,7 @@ class AhuModel(EquipmentModel):
         self._heating_valve_command_pct = 0.0
         self._cooling_valve_fraction = 0.0
         self._heating_valve_fraction = 0.0
+        self._preheat_valve_fraction = 0.0
         self._previous_cooling_valve_command_pct = 0.0
         self._previous_heating_valve_command_pct = 0.0
         self._cooling_valve_closing_remaining_seconds = 0.0
@@ -333,6 +344,15 @@ class AhuModel(EquipmentModel):
         return self._total_supply_airflow_cfm
 
     @property
+    def outside_air_fraction(self) -> float:
+        return max(0.0, min(1.0, self._outside_air_fraction))
+
+    @property
+    def outside_airflow_cfm(self) -> float:
+        """Ventilation/economizer air crossing the outside-air intake."""
+        return self.total_supply_airflow_cfm * self.outside_air_fraction
+
+    @property
     def cooling_coil_load_btuh(self) -> float:
         """Total sensible plus latent heat transferred into chilled water."""
         return self._cooling_coil_load_btuh
@@ -357,19 +377,16 @@ class AhuModel(EquipmentModel):
 
     def hot_water_flow_at_pressure(self, differential_pressure_psi: float) -> float:
         """Combined preheat and heating-coil two-way valve demand."""
-        preheat_fraction = max(
-            0.0,
-            min(1.0, (self.registry.get_commanded("preheat_valve") or 0.0) / 100.0),
-        )
+        preheat_fraction = self._preheat_valve_fraction
         pressure_factor = (
             max(0.0, differential_pressure_psi)
             / max(self.params.hot_water_design_dp_psi, 0.1)
         ) ** 0.5
         return pressure_factor * (
             self.params.heating_coil_design_flow_gpm
-            * self._heating_valve_fraction
+            * self._hot_water_valve_characteristic(self._heating_valve_fraction)
             + self.params.preheat_coil_design_flow_gpm
-            * preheat_fraction
+            * self._hot_water_valve_characteristic(preheat_fraction)
         )
 
     @property
@@ -1046,8 +1063,18 @@ class AhuModel(EquipmentModel):
                 dt_seconds,
                 self.params.fan_start_time_constant_seconds,
             )
-            self.fan_running = self._fan_running_frac > 0.5
             self._sa_fan_speed_feedback_pct = self._fan_running_frac * 100.0
+            if sa_fan_cmd:
+                self._sa_fan_proof_elapsed_seconds += max(0.0, dt_seconds)
+            else:
+                self._sa_fan_proof_elapsed_seconds = 0.0
+            self.fan_running = bool(
+                sa_fan_cmd
+                and self._sa_fan_proof_elapsed_seconds
+                >= self.params.fan_proof_delay_seconds
+                and self._sa_fan_speed_feedback_pct
+                >= self.params.fan_proof_minimum_speed_pct
+            )
             self._sa_fan_vfd_frequency_hz = (
                 self._sa_fan_speed_feedback_pct
                 / 100.0
@@ -1071,6 +1098,7 @@ class AhuModel(EquipmentModel):
 
         if not sa_fan_cmd:
             self._fan_running_frac = 0.0
+            self._sa_fan_proof_elapsed_seconds = 0.0
             self.fan_running = False
             self._pid_active = False
             self._sa_fan_speed_feedback_pct = 0.0
@@ -1106,6 +1134,7 @@ class AhuModel(EquipmentModel):
                 step,
                 self.params.fan_start_time_constant_seconds,
             )
+            self._sa_fan_proof_elapsed_seconds += step
             if not self.fan_running:
                 startup_target = max(
                     self.params.fan_minimum_speed_pct,
@@ -1127,7 +1156,8 @@ class AhuModel(EquipmentModel):
                     * self.params.vfd_maximum_frequency_hz
                 )
                 self.fan_running = (
-                    self._fan_running_frac > 0.5
+                    self._sa_fan_proof_elapsed_seconds
+                    >= self.params.fan_proof_delay_seconds
                     and self._sa_fan_speed_feedback_pct
                     >= self.params.fan_proof_minimum_speed_pct
                 )
@@ -1249,6 +1279,7 @@ class AhuModel(EquipmentModel):
 
             if self._automatic_high_static_trip:
                 self._fan_running_frac = 0.0
+                self._sa_fan_proof_elapsed_seconds = 0.0
                 self.fan_running = False
                 self._pid_active = False
                 self._pid_output_pct = 0.0
@@ -1651,6 +1682,7 @@ class AhuModel(EquipmentModel):
     def operating_snapshot(self) -> dict:
         return {
             "fan_proven": self.fan_running,
+            "return_fan_proven": self._ra_fan_running,
             "supply_air_available": self.supply_air_available,
             "return_air_temp_f": round(self._ra_temp, 2),
             "return_air_humidity_pct": round(self._ra_humidity, 2),
@@ -1929,6 +1961,12 @@ class AhuModel(EquipmentModel):
             dt_seconds,
             self.params.heating_valve_time_constant_seconds,
         )
+        self._preheat_valve_fraction = self.approach(
+            self._preheat_valve_fraction,
+            preheat_pct / 100.0,
+            dt_seconds,
+            self.params.preheat_valve_time_constant_seconds,
+        )
         self._previous_cooling_valve_command_pct = cooling_pct
         self._previous_heating_valve_command_pct = heating_pct
 
@@ -1965,6 +2003,27 @@ class AhuModel(EquipmentModel):
             heating_pct = 0.0
             preheat_pct = 0.0
             econ_pct = 0.0
+
+        # Return-fan proof follows its own motor acceleration instead of
+        # mirroring supply-fan proof immediately. Air-system safeties and the
+        # supply-fan interlock remove the effective run request.
+        effective_ra_fan_cmd = bool(ra_fan_cmd and self.fan_running)
+        if effective_ra_fan_cmd:
+            self._ra_fan_proof_elapsed_seconds += max(0.0, dt_seconds)
+        else:
+            self._ra_fan_proof_elapsed_seconds = 0.0
+        self._ra_fan_running_frac = self.approach(
+            self._ra_fan_running_frac,
+            1.0 if effective_ra_fan_cmd else 0.0,
+            dt_seconds,
+            self.params.return_fan_start_time_constant_seconds,
+        )
+        self._ra_fan_running = bool(
+            effective_ra_fan_cmd
+            and self._ra_fan_proof_elapsed_seconds
+            >= self.params.return_fan_proof_delay_seconds
+            and self._ra_fan_running_frac >= 0.20
+        )
 
         oa_temp = self.site_registry.get("oa_temp")
         try:
@@ -2048,9 +2107,26 @@ class AhuModel(EquipmentModel):
             )
         else:
             self._outside_air_fraction = 0.0
-        target_ma = (
-            self._outside_air_fraction * oa_temp
-            + (1.0 - self._outside_air_fraction) * self._ra_temp
+        outdoor_ratio = humidity_ratio_from_rh(oa_temp, oa_humidity)
+        target_mixed_air_ratio = (
+            self._outside_air_fraction * outdoor_ratio
+            + (1.0 - self._outside_air_fraction) * self._ra_humidity_ratio
+        )
+        # Adiabatic mixing conserves dry-air moisture and moist-air enthalpy.
+        # Dry-bulb arithmetic is only correct when both streams have nearly
+        # the same humidity ratio and otherwise biases coil entering load.
+        target_mixed_air_enthalpy = (
+            self._outside_air_fraction
+            * moist_air_enthalpy_from_humidity_ratio(oa_temp, outdoor_ratio)
+            + (1.0 - self._outside_air_fraction)
+            * moist_air_enthalpy_from_humidity_ratio(
+                self._ra_temp,
+                self._ra_humidity_ratio,
+            )
+        )
+        target_ma = dry_bulb_from_enthalpy_and_humidity_ratio(
+            target_mixed_air_enthalpy,
+            target_mixed_air_ratio,
         )
         # No airflow -> no forced blend; the plenum slowly equalizes with the
         # building instead of responding at full economizer speed.
@@ -2060,12 +2136,6 @@ class AhuModel(EquipmentModel):
             else self.params.plenum_idle_time_constant_seconds
         )
         self._ma_temp = self.approach(self._ma_temp, target_ma, dt_seconds, ma_tc)
-        target_mixed_air_ratio = (
-            self._outside_air_fraction
-            * humidity_ratio_from_rh(oa_temp, oa_humidity)
-            + (1.0 - self._outside_air_fraction)
-            * self._ra_humidity_ratio
-        )
         self._mixed_air_humidity_ratio = self.approach(
             self._mixed_air_humidity_ratio,
             target_mixed_air_ratio,
@@ -2073,7 +2143,7 @@ class AhuModel(EquipmentModel):
             ma_tc,
         )
         preheat_active = (
-            preheat_pct > 0.0
+            self._preheat_valve_fraction > 0.001
             and self.heating_capacity_fraction > 0.0
             and self._ma_temp < self.params.preheat_leaving_temp_f
         )
@@ -2098,13 +2168,13 @@ class AhuModel(EquipmentModel):
         ) ** 0.5
         preheat_flow_gpm = (
             self.params.preheat_coil_design_flow_gpm
-            * (preheat_pct / 100.0)
+            * self._hot_water_valve_characteristic(self._preheat_valve_fraction)
             * pressure_factor
             if self.hot_water_available else 0.0
         )
         heating_flow_gpm = (
             self.params.heating_coil_design_flow_gpm
-            * self._heating_valve_fraction
+            * self._hot_water_valve_characteristic(self._heating_valve_fraction)
             * pressure_factor
             if self.hot_water_available else 0.0
         )
@@ -2114,7 +2184,7 @@ class AhuModel(EquipmentModel):
         preheat_target = self._ma_temp
         if preheat_active:
             requested_preheat_target = self._ma_temp + (
-                (preheat_pct / 100.0)
+                self._preheat_valve_fraction
                 * self.heating_capacity_fraction
                 * (self.params.preheat_leaving_temp_f - self._ma_temp)
             )
@@ -2131,7 +2201,14 @@ class AhuModel(EquipmentModel):
             else:
                 preheat_btuh = min(
                     requested_preheat_btuh,
-                    500.0 * preheat_flow_gpm * self.params.hot_water_design_delta_f,
+                    500.0
+                    * preheat_flow_gpm
+                    * max(
+                        0.0,
+                        hot_water_temp
+                        - self._ma_temp
+                        - self.params.hot_water_minimum_return_approach_f,
+                    ),
                 )
                 preheat_target = self._ma_temp + preheat_btuh / max(
                     1.08 * self._total_supply_airflow_cfm,
@@ -2299,7 +2376,14 @@ class AhuModel(EquipmentModel):
                 )
                 heating_btuh = min(
                     requested_heating_btuh,
-                    500.0 * heating_flow_gpm * self.params.hot_water_design_delta_f,
+                    500.0
+                    * heating_flow_gpm
+                    * max(
+                        0.0,
+                        hot_water_temp
+                        - heating_enter_temp
+                        - self.params.hot_water_minimum_return_approach_f,
+                    ),
                 )
                 if self._total_supply_airflow_cfm <= 1.0:
                     heating_btuh = 0.0
@@ -2320,8 +2404,14 @@ class AhuModel(EquipmentModel):
                     / max(500.0 * self._hot_water_flow_gpm, 1.0)
                 )
 
-            # Fan heat is added after the coils.
-            target_sa += self.params.fan_heat_f
+            # Fan temperature rise follows shaft power per unit airflow. For
+            # a variable-speed fan this is approximately proportional to N^2
+            # (power follows N^3 while airflow follows N).
+            fan_speed_fraction = max(
+                0.0,
+                min(1.0, self._sa_fan_speed_feedback_pct / 100.0),
+            )
+            target_sa += self.params.fan_heat_f * fan_speed_fraction**2
             if self._heating_active:
                 target_sa = min(
                     target_sa,
@@ -2392,7 +2482,7 @@ class AhuModel(EquipmentModel):
         if "sa_fan_status" in self.registry.all_points():
             self.registry.set("sa_fan_status", 1.0 if self.fan_running else 0.0)
         if "ra_fan_status" in self.registry.all_points():
-            self.registry.set("ra_fan_status", 1.0 if (ra_fan_cmd and self.fan_running) else 0.0)
+            self.registry.set("ra_fan_status", 1.0 if self._ra_fan_running else 0.0)
         self._publish_safety_points()
 
         self.runtime_seconds += dt_seconds

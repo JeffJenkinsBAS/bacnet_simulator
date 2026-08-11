@@ -173,6 +173,38 @@ async def test_analog_limits_are_published_and_out_of_range_writes_are_rejected(
     assert value != pytest.approx(500.0)
 
 
+@pytest.mark.parametrize("invalid_value", [float("nan"), float("inf"), float("-inf")])
+async def test_nonfinite_analog_writes_are_rejected_before_commit(
+    running_transport,
+    invalid_value,
+):
+    """NaN bypasses ordinary min/max comparisons unless checked explicitly."""
+    _, client_port = _allocate_ports()
+    client = await _make_client(client_port)
+    server_addr = f"127.0.0.1:{running_transport.test_port}"
+
+    baseline = await client.read_property(
+        server_addr,
+        "analog-output,11020",
+        "presentValue",
+    )
+    with pytest.raises(BaseException):
+        await client.write_property(
+            server_addr,
+            "analog-output,11020",
+            "presentValue",
+            invalid_value,
+            priority=8,
+        )
+
+    unchanged = await client.read_property(
+        server_addr,
+        "analog-output,11020",
+        "presentValue",
+    )
+    assert float(unchanged) == pytest.approx(float(baseline))
+
+
 async def test_out_of_range_write_property_multiple_is_rejected_before_commit(running_transport):
     from bacpypes3.apdu import WritePropertyMultipleRequest
     from bacpypes3.basetypes import PropertyValue, WriteAccessSpecification

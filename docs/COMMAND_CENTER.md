@@ -176,11 +176,15 @@ and proven chilled-water flow. Freeze/burst/flood states latch until Restart.
 See `docs/DUCT_STATIC_PID_LAB.md` for the complete point contract, state
 machines, limitations, and cutover boundary.
 
-## Fifteen-second diagnostics
+## Start allowances and fifteen-second diagnostics
 
-The command center evaluates diagnostics whenever it refreshes. A mismatch
-must persist for **15 wall-clock seconds** before the location is outlined
-as a failure. For each VAV with a meaningful expected airflow, the
+The command center evaluates diagnostics whenever it refreshes. Binary
+equipment first receives a location-specific **simulated-time start
+allowance** (120 seconds for chillers, 90 for boilers, and shorter allowances
+for fans/pumps). This scales with the simulation speed and prevents a realistic
+purge/start sequence from being mislabeled as a failure. After that allowance,
+a mismatch must persist for **15 wall-clock seconds** before the location is
+outlined as a failure. For each VAV with a meaningful expected airflow, the
 diagnostic compares actual airflow with the current WebCTRL setpoint and
 available airside conditions.
 
@@ -202,6 +206,14 @@ An out-of-band result is a prompt to inspect damper command, actual
 airflow, AHU fan state, static-pressure availability, forced values,
 active faults, and zone demand. It is not proof of a failed terminal unit
 by itself.
+
+Scenario STOP and RESET relinquish simulator-owned Priority 3 writes, clear
+the applicable faults, and restore the weather targets that existed before
+the lesson. They do not rewind water/air/zone temperatures, actuator travel,
+or latched equipment damage. Use RESTART before a repeat that requires a fresh
+physical model; WebCTRL-owned priority commands remain intentionally preserved.
+Completed timelines can still have active effects, so the scenario card keeps
+STOP available until those effects are explicitly cleared.
 
 ## Interactive operator workflow
 

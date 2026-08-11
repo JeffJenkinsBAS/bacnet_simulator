@@ -31,6 +31,7 @@ from app.registry import PointRegistry
 class ChwPlantParameters:
     design_flow_per_chiller_gpm: float = 300.0
     header_time_constant_seconds: float = 8.0  # sensor/header mixing lag
+    flow_time_constant_seconds: float = 3.0
     idle_header_temp_f: float = 70.0  # initial water temperature, not a fixed target
     header_return_rise_f: float = 10.0
     minimum_usable_flow_gpm: float = 50.0
@@ -191,12 +192,18 @@ class ChwPlantManagerModel(EquipmentModel):
         ]
         pumping = len(distribution_units)
         target_flow = pumping * self.params.design_flow_per_chiller_gpm
+        self._flow_common = self.approach(
+            self._flow_common,
+            target_flow,
+            dt_seconds,
+            self.params.flow_time_constant_seconds,
+        )
 
         # Whole-loop first-law balance.  AHU heat, pump work, and ambient
         # piping/mechanical-room gains add energy; proven compressors remove
         # it.  The finite water inventory makes temperatures coast and pull
         # down over realistic minutes/hours instead of snapping to 54-55 F.
-        self._coil_heat_btuh = self.cooling_load_btuh if target_flow > 0.0 else 0.0
+        self._coil_heat_btuh = self.cooling_load_btuh if self._flow_common > 0.01 else 0.0
         self._pump_heat_btuh = (
             pumping * self.params.pump_heat_btuh_per_running_pump
         )
@@ -226,7 +233,7 @@ class ChwPlantManagerModel(EquipmentModel):
             min(self.params.maximum_loop_temp_f, self._loop_mean_temp_f),
         )
 
-        if target_flow > 0.0:
+        if self._flow_common > 0.01:
             # Heat picked up between the common supply and return sensors.
             # Pump work changes the mean temperature; the pump is treated as
             # plant-side of the common supply sensor, so it is not double
@@ -234,7 +241,7 @@ class ChwPlantManagerModel(EquipmentModel):
             load_side_heat_btuh = (
                 self._coil_heat_btuh + self._ambient_heat_btuh
             )
-            return_rise = load_side_heat_btuh / max(500.0 * target_flow, 1.0)
+            return_rise = load_side_heat_btuh / max(500.0 * self._flow_common, 1.0)
             return_rise = max(
                 -self.params.maximum_header_return_rise_f,
                 min(self.params.maximum_header_return_rise_f, return_rise),
@@ -251,14 +258,13 @@ class ChwPlantManagerModel(EquipmentModel):
         tc = self.params.header_time_constant_seconds
         self._chws_common = self.approach(self._chws_common, target_chws, dt_seconds, tc)
         self._chwr_common = self.approach(self._chwr_common, target_chwr, dt_seconds, tc)
-        self._flow_common = self.approach(self._flow_common, target_flow, dt_seconds, tc)
-
         distribution_ids = {id(chiller) for chiller in distribution_units}
+        branch_flow = self._flow_common / max(pumping, 1) if pumping else 0.0
         for chiller in self.chillers:
             chiller.set_evaporator_conditions(
                 return_temp_f=self._chwr_common,
                 flow_gpm=(
-                    self.params.design_flow_per_chiller_gpm
+                    branch_flow * (1.0 - chiller.chw_bypass_fraction)
                     if id(chiller) in distribution_ids
                     else 0.0
                 ),
@@ -275,6 +281,7 @@ class ChwPlantManagerModel(EquipmentModel):
 class BoilerPlantParameters:
     design_flow_per_boiler_gpm: float = 60.0
     header_time_constant_seconds: float = 10.0
+    hydraulic_time_constant_seconds: float = 3.0
     idle_header_temp_f: float = 100.0
     minimum_usable_supply_temp_f: float = 90.0
     full_capacity_supply_temp_f: float = 160.0
@@ -286,12 +293,16 @@ class BoilerPlantParameters:
     water_heat_capacity_btuper_gallon_f: float = 8.33
     distribution_pump_heat_btuh: float = 6_000.0
     circulator_pump_heat_btuh: float = 3_000.0
-    loop_ambient_ua_btuh_per_f: float = 900.0
+    # Insulated distribution piping. The former 900 BTUH/F value implied
+    # roughly 95 kBTUH of jacket loss at 180 F, overwhelming the actual
+    # terminal load and fabricating extreme common-header delta-T.
+    loop_ambient_ua_btuh_per_f: float = 60.0
     outdoor_ambient_fraction: float = 0.10
     mechanical_room_temp_offset_f: float = 3.0
     minimum_loop_temp_f: float = 40.0
     maximum_loop_temp_f: float = 210.0
     maximum_header_drop_f: float = 40.0
+    supply_sensor_overshoot_tolerance_f: float = 0.25
 
 
 class BoilerManagerModel(EquipmentModel):
@@ -320,6 +331,8 @@ class BoilerManagerModel(EquipmentModel):
         self._pump_heat_btuh = 0.0
         self._ambient_loss_btuh = 0.0
         self._boiler_heat_btuh = 0.0
+        self._primary_to_secondary_heat_btuh = 0.0
+        self._primary_return_temp_f = self.params.idle_header_temp_f
 
     def set_heating_coils(self, heating_coils: list) -> None:
         """Attach AHU and terminal coils after graph construction."""
@@ -424,6 +437,10 @@ class BoilerManagerModel(EquipmentModel):
             "pump_speed_pct": round(self._pump_speed_pct, 1),
             "heating_load_btuh": round(self.heating_load_btuh, 1),
             "boiler_heat_btuh": round(self._boiler_heat_btuh, 1),
+            "primary_to_secondary_heat_btuh": round(
+                self._primary_to_secondary_heat_btuh, 1
+            ),
+            "primary_return_temp_f": round(self._primary_return_temp_f, 2),
             "pump_heat_btuh": round(self._pump_heat_btuh, 1),
             "ambient_loss_btuh": round(self._ambient_loss_btuh, 1),
             "loop_mean_temp_f": round(self._loop_mean_temp_f, 2),
@@ -476,7 +493,15 @@ class BoilerManagerModel(EquipmentModel):
         target_flow, target_dp = self._solve_hydraulics(len(distribution_units))
         circulator_units = [boiler for boiler in self.boilers if boiler.circ_pump_running]
 
-        self._coil_heat_btuh = self.heating_load_btuh if target_flow > 0.0 else 0.0
+        hydraulic_tc = self.params.hydraulic_time_constant_seconds
+        self._flow_common = self.approach(
+            self._flow_common, target_flow, dt_seconds, hydraulic_tc
+        )
+        self._differential_pressure_psi = self.approach(
+            self._differential_pressure_psi, target_dp, dt_seconds, hydraulic_tc
+        )
+
+        self._coil_heat_btuh = self.heating_load_btuh if self._flow_common > 0.01 else 0.0
         self._pump_heat_btuh = (
             len(distribution_units) * self.params.distribution_pump_heat_btuh
             + len(circulator_units) * self.params.circulator_pump_heat_btuh
@@ -487,43 +512,124 @@ class BoilerManagerModel(EquipmentModel):
         self._boiler_heat_btuh = sum(
             max(0.0, boiler.heat_output_btuh) for boiler in self.boilers
         )
-        net_heat_btuh = (
-            self._boiler_heat_btuh
-            + self._pump_heat_btuh
-            - self._coil_heat_btuh
-            - self._ambient_loss_btuh
+
+        # Primary-secondary hydraulic separator balance. Boiler circulators
+        # establish constant primary flow independently of secondary demand.
+        # The common distribution supply is therefore actual primary leaving
+        # water (or a blend of that water with excess secondary return when
+        # secondary flow is greater), never an independently synthesized
+        # temperature hotter than every active boiler outlet.
+        primary_flow = (
+            len(circulator_units) * self.params.design_flow_per_boiler_gpm
+        )
+        primary_leaving_temperatures = [
+            float(getattr(boiler, "hws_temp_f", self._hws_common))
+            for boiler in circulator_units
+        ]
+        primary_supply = (
+            sum(primary_leaving_temperatures) / len(primary_leaving_temperatures)
+            if primary_leaving_temperatures
+            else self._hws_common
         )
         loop_heat_capacity = max(
             1.0,
             self.params.loop_volume_gallons * self.params.water_heat_capacity_btuper_gallon_f,
         )
-        self._loop_mean_temp_f += (
-            net_heat_btuh * max(0.0, dt_seconds) / 3600.0 / loop_heat_capacity
-        )
-        self._loop_mean_temp_f = max(
-            self.params.minimum_loop_temp_f,
-            min(self.params.maximum_loop_temp_f, self._loop_mean_temp_f),
-        )
 
-        if target_flow > 0.0:
+        if self._flow_common > 0.01:
             load_side_heat = self._coil_heat_btuh + self._ambient_loss_btuh
-            header_drop = load_side_heat / max(500.0 * target_flow, 1.0)
+            header_drop = load_side_heat / max(500.0 * self._flow_common, 1.0)
             header_drop = max(
                 -self.params.maximum_header_drop_f,
                 min(self.params.maximum_header_drop_f, header_drop),
             )
-            target_hws = self._loop_mean_temp_f + 0.5 * header_drop
-            target_hwr = self._loop_mean_temp_f - 0.5 * header_drop
-        else:
-            target_hws = self._loop_mean_temp_f
-            target_hwr = self._loop_mean_temp_f
+            if primary_flow > 0.01:
+                primary_fraction = min(1.0, primary_flow / self._flow_common)
+                target_hws = (
+                    primary_fraction * primary_supply
+                    + (1.0 - primary_fraction) * self._hwr_common
+                )
+                tc = self.params.header_time_constant_seconds
+                self._hws_common = self.approach(
+                    self._hws_common, target_hws, dt_seconds, tc
+                )
+                if primary_leaving_temperatures:
+                    hottest_primary_supply = max(primary_leaving_temperatures)
+                    self._hws_common = min(
+                        self._hws_common,
+                        hottest_primary_supply
+                        + self.params.supply_sensor_overshoot_tolerance_f,
+                    )
+            else:
+                # Distribution-pump coast with no primary source uses the
+                # finite stored loop energy.
+                net_heat_btuh = (
+                    self._pump_heat_btuh
+                    - self._coil_heat_btuh
+                    - self._ambient_loss_btuh
+                )
+                self._loop_mean_temp_f += (
+                    net_heat_btuh
+                    * max(0.0, dt_seconds)
+                    / 3600.0
+                    / loop_heat_capacity
+                )
+                target_hws = self._loop_mean_temp_f + 0.5 * header_drop
+                tc = self.params.header_time_constant_seconds
+                self._hws_common = self.approach(
+                    self._hws_common, target_hws, dt_seconds, tc
+                )
 
-        tc = self.params.header_time_constant_seconds
-        self._hws_common = self.approach(self._hws_common, target_hws, dt_seconds, tc)
-        self._hwr_common = self.approach(self._hwr_common, target_hwr, dt_seconds, tc)
-        self._flow_common = self.approach(self._flow_common, target_flow, dt_seconds, tc)
-        self._differential_pressure_psi = self.approach(
-            self._differential_pressure_psi, target_dp, dt_seconds, tc
+            # Common return is the flow-weighted result of all open coils,
+            # the minimum-flow bypass, and modeled distribution loss. It is
+            # not an unrelated bulk-loop temperature. This identity makes
+            # 500*GPM*(HWS-HWR) equal the actual secondary heat removed.
+            self._hwr_common = self._hws_common - header_drop
+            self._primary_to_secondary_heat_btuh = (
+                500.0
+                * self._flow_common
+                * (self._hws_common - self._hwr_common)
+                if primary_flow > 0.01
+                else 0.0
+            )
+            # Keep one finite inventory for pump-off coast, synchronized to
+            # the physically measured flowing headers. Do not integrate the
+            # same source/load energy a second time into an independent mean.
+            self._loop_mean_temp_f = 0.5 * (
+                self._hws_common + self._hwr_common
+            )
+        else:
+            target_hws = (
+                primary_supply if primary_flow > 0.01 else self._loop_mean_temp_f
+            )
+            target_hwr = self._loop_mean_temp_f
+            # With no secondary flow, only ambient exchange changes the
+            # distribution inventory; circulator heat is added to the
+            # primary return below.
+            self._loop_mean_temp_f += (
+                -self._ambient_loss_btuh
+                * max(0.0, dt_seconds)
+                / 3600.0
+                / loop_heat_capacity
+            )
+            tc = self.params.header_time_constant_seconds
+            self._hws_common = self.approach(
+                self._hws_common, target_hws, dt_seconds, tc
+            )
+            self._hwr_common = self.approach(
+                self._hwr_common, target_hwr, dt_seconds, tc
+            )
+            if primary_leaving_temperatures:
+                self._hws_common = min(
+                    self._hws_common,
+                    max(primary_leaving_temperatures)
+                    + self.params.supply_sensor_overshoot_tolerance_f,
+                )
+            self._primary_to_secondary_heat_btuh = 0.0
+
+        self._loop_mean_temp_f = max(
+            self.params.minimum_loop_temp_f,
+            min(self.params.maximum_loop_temp_f, self._loop_mean_temp_f),
         )
         self._pump_speed_pct = self.approach(
             self._pump_speed_pct,
@@ -533,17 +639,37 @@ class BoilerManagerModel(EquipmentModel):
         )
 
         branch_units = circulator_units
-        branch_flow = (
-            min(
-                self.params.design_flow_per_boiler_gpm,
-                target_flow / max(len(branch_units), 1),
+        # Boiler circulators are primary-loop pumps. Their boiler flow does
+        # not collapse just because two-way secondary valves close or the
+        # distribution pump stops; the hydraulic separator decouples the two
+        # circuits. This preserves the boiler's minimum-flow interlock and
+        # lets it warm its primary loop before secondary demand arrives.
+        branch_flow = self.params.design_flow_per_boiler_gpm if branch_units else 0.0
+        if primary_flow > 0.01:
+            if primary_flow >= self._flow_common:
+                recirculated_primary_flow = primary_flow - self._flow_common
+                self._primary_return_temp_f = (
+                    self._flow_common * self._hwr_common
+                    + recirculated_primary_flow * primary_supply
+                ) / primary_flow
+            else:
+                # All primary flow returns from the secondary circuit; excess
+                # secondary flow recirculates through the separator.
+                self._primary_return_temp_f = self._hwr_common
+            # Pump work is added after the common return sensor and before
+            # the boiler entering-water sensor, so it reduces burner demand
+            # without corrupting the measured secondary load delta-T.
+            self._primary_return_temp_f += self._pump_heat_btuh / max(
+                500.0 * primary_flow,
+                1.0,
             )
-            if branch_units else 0.0
-        )
+        else:
+            self._primary_return_temp_f = self._hwr_common
+
         branch_ids = {id(boiler) for boiler in branch_units}
         for boiler in self.boilers:
             boiler.set_hydronic_conditions(
-                self._hwr_common,
+                self._primary_return_temp_f,
                 branch_flow if id(boiler) in branch_ids else 0.0,
             )
 

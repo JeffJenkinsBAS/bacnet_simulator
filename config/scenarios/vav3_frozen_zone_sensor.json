@@ -7,6 +7,12 @@
     "outside_air_humidity": 65
   },
   "events": [
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chiller_enable", "value": true, "description": "Enable Chiller-1" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chiller_ss", "value": true, "description": "Start Chiller-1" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_pump_ss", "value": true, "description": "Start CHW pump" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_iso_valve", "value": true, "description": "Open CHW isolation valve" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "cw_pump_ss", "value": true, "description": "Start condenser-water pump" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "ct_fan_ss", "value": true, "description": "Start cooling-tower fan" },
     {
       "time_seconds": 0,
       "action": "set_value",
@@ -15,6 +21,9 @@
       "value": true,
       "description": "AHU-1 fan on to establish airflow"
     },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 65, "description": "Create a physical cooling response" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "airflow_setpoint", "value": 300, "description": "Request occupied cooling airflow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "damper_position_command", "value": 75, "description": "Open VAV-3 so discharge conditions continue changing after the sensor freezes" },
     {
       "time_seconds": 60,
       "action": "set_fault",
@@ -33,9 +42,21 @@
     "Student identifies the frozen reading by noting Zone Temp shows zero variation over a trend period where it should be moving",
     "Student distinguishes this from a valve/damper fault by checking that airflow and discharge temp ARE still responding"
   ],
-  "instructor_notes": "A good pairing exercise with vav1_reheat_valve_stuck -- same class of symptom (control loop chasing a stale signal) with two different root causes (sensor vs actuator), useful for teaching how to tell them apart.",
+  "instructor_notes": "The scenario establishes the complete chiller-to-AHU-to-VAV cooling chain so the zone has a real process disturbance before the published sensor freezes. Pair with vav1_reheat_valve_stuck to compare sensor and actuator failures.",
   "student_objectives": [
     "Recognize a frozen/stuck sensor from trend behavior alone",
     "Correctly rule out actuator failure when downstream points (airflow, discharge temp) are still responding normally"
-  ]
+  ],
+  "difficulty": "intermediate",
+  "recommended_speed": 1,
+  "observation_points": [
+    "ACI-SIM-VAV-3.zone_temp",
+    "ACI-SIM-VAV-3.discharge_temp",
+    "ACI-SIM-VAV-3.airflow",
+    "ACI-SIM-VAV-3.damper_position_feedback",
+    "ACI-SIM-AHU-1.ahu_sa_temp",
+    "ACI-SIM-CHW-PLANT.chws_temp_common"
+  ],
+  "prerequisites": ["Virtual-zone heat balance", "Sensor versus actuator fault isolation"],
+  "tags": ["vav", "sensor", "trend", "parent-child"]
 }

@@ -63,6 +63,7 @@ class VavParameters:
     hot_water_valve_rangeability: float = 20.0
     hot_water_design_delta_f: float = 20.0
     hot_water_design_dp_psi: float = 4.0
+    hot_water_minimum_return_approach_f: float = 10.0
     maximum_discharge_temp_f: float = 95.0
     duct_pickup_f: float = 1.0
     zone_heating_setpoint_f: float = 70.0
@@ -465,7 +466,15 @@ class SingleDuctVavModel(EquipmentModel):
             dt_seconds,
             self.params.hot_water_valve_time_constant_seconds,
         )
-        self._damper_position_feedback_pct = damper_pct
+        # The BACnet AO is the controller request; blades and linkage require
+        # time to stroke. The effective feedback is also what the parent duct
+        # model sees, preserving the physical parent/child timing chain.
+        self._damper_position_feedback_pct = self.approach(
+            self._damper_position_feedback_pct,
+            damper_pct,
+            dt_seconds,
+            self.params.damper_time_constant_seconds,
+        )
 
         if self._has_extended_airflow_points:
             self.registry.set(
@@ -504,8 +513,9 @@ class SingleDuctVavModel(EquipmentModel):
             0.0,
             min(1.0, available_static / self.params.design_static_pressure_inwc),
         )
+        effective_damper_pct = self.damper_position_feedback_pct
         damper_capacity = (
-            (damper_pct / 100.0)
+            (effective_damper_pct / 100.0)
             * self.params.max_airflow_cfm
             * sqrt(static_ratio)
         )
@@ -514,7 +524,7 @@ class SingleDuctVavModel(EquipmentModel):
             # A stopped/unproven AHU cannot deliver primary air. Force an
             # exact zero instead of leaving a decaying residual on BACnet.
             self._airflow_cfm = 0.0
-        elif damper_pct <= 0.05:
+        elif effective_damper_pct <= 0.05:
             # This point represents the effective damper position in the
             # training system. At 0% the blades are closed, so only a tiny,
             # configurable casing/blade leakage remains while the AHU is on.
@@ -566,7 +576,12 @@ class SingleDuctVavModel(EquipmentModel):
                 water_side_capacity = (
                     500.0
                     * self._hot_water_flow_gpm
-                    * self.params.hot_water_design_delta_f
+                    * max(
+                        0.0,
+                        hot_water_temp
+                        - entering_air_temp
+                        - self.params.hot_water_minimum_return_approach_f,
+                    )
                 )
                 air_side_capacity = 1.08 * effective_airflow * max(
                     0.0,
@@ -574,7 +589,9 @@ class SingleDuctVavModel(EquipmentModel):
                     - entering_air_temp,
                 )
                 self._hot_water_coil_load_btuh = min(
-                    self.hot_water_design_load_btuh,
+                    self.hot_water_design_load_btuh
+                    * self._hot_water_valve_fraction
+                    * self.heating_capacity_fraction,
                     water_side_capacity,
                     air_side_capacity,
                 )
@@ -611,6 +628,14 @@ class SingleDuctVavModel(EquipmentModel):
                 if site_registry is not None
                 else 50.0
             )
+            building_pressure = (
+                float(site_registry.get("building_pressure"))
+                if (
+                    site_registry is not None
+                    and "building_pressure" in site_registry.all_points()
+                )
+                else 0.0
+            )
             supply_humidity_ratio = float(
                 getattr(
                     self.ahu_model,
@@ -627,6 +652,7 @@ class SingleDuctVavModel(EquipmentModel):
                 discharge_temp_f=self._discharge_temp_f,
                 supply_humidity_ratio=supply_humidity_ratio,
                 ahu_supply_proven=ahu_supply_proven,
+                building_pressure_inwc=building_pressure,
             )
             if "zone_temp" in self.registry.all_points():
                 self.registry.set("zone_temp", new_zone_temp)

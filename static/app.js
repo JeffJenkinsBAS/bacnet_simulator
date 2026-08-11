@@ -1981,9 +1981,10 @@ function targetPointInOperations(point) {
 function renderActiveScenario() {
   const scenario = state.status?.scenario || {};
   const running = Boolean(scenario.running);
+  const effectsActive = Boolean(scenario.effects_active);
   const stop = $("scenario-stop");
   const reset = $("scenario-reset");
-  if (stop) stop.disabled = !state.online || !running;
+  if (stop) stop.disabled = !state.online || !effectsActive;
   if (reset) reset.disabled = !state.online;
   const container = $("active-scenario");
   if (!container) return;
@@ -2019,6 +2020,12 @@ function renderActiveScenario() {
       text: `Next at t+${scenario.next_event.time_seconds}s \u00B7 ${scenario.next_event.description}`,
     }));
   }
+  if (!running && effectsActive) {
+    card.appendChild(createElement("p", {
+      className: "form-note",
+      text: "Timeline complete; scenario faults, forces, and weather targets remain active until STOP or RESET.",
+    }));
+  }
   replaceChildren(container, card);
 }
 
@@ -2038,6 +2045,14 @@ function renderScenarioLibrary() {
       createElement("h4", { text: scenario.title || scenario.scenario_id }),
       createElement("p", { text: scenario.description || "No scenario description provided." }),
     );
+    const lessonMeta = createElement("div", { className: "scenario-meta" });
+    const duration = Number(scenario.duration_seconds) || 0;
+    const speed = Math.max(0.1, Number(scenario.recommended_speed) || 1);
+    lessonMeta.append(
+      createElement("span", { text: titleCase(scenario.difficulty || "intermediate") }),
+      createElement("span", { text: `${formatDuration(duration)} SIM | ${formatDuration(duration / speed)} AT ${speed}x` }),
+    );
+    card.appendChild(lessonMeta);
     if (Array.isArray(scenario.student_objectives) && scenario.student_objectives.length) {
       const objectives = createElement("ul", { className: "scenario-objectives" });
       for (const objective of scenario.student_objectives.slice(0, 2)) {
@@ -2051,10 +2066,10 @@ function renderScenarioLibrary() {
     run.disabled = !state.online;
     run.addEventListener("click", async () => {
       const current = state.status?.scenario || {};
-      if (current.running) {
+      if (current.effects_active) {
         const confirmed = await confirmAction(
           "Replace Running Scenario",
-          `Starting \u201C${scenario.title}\u201D will stop \u201C${current.title || current.scenario_id}\u201D and clear the faults it created.`,
+          `Starting \u201C${scenario.title}\u201D will stop \u201C${current.title || current.scenario_id}\u201D, relinquish its Priority 3 writes, restore its prior weather targets, and clear its faults. Thermal history coasts unless you use Restart.`,
           "REPLACE & RUN",
         );
         if (!confirmed) return;
@@ -2630,7 +2645,7 @@ function bindOperations() {
   $("scenario-reset").addEventListener("click", async () => {
     const confirmed = await confirmAction(
       "Reset Scenario Engine",
-      "This stops the current scenario and clears every fault or force it created, including manual instructor overrides.",
+      "This stops the current scenario, restores its prior weather targets, and clears every fault or force it created, including manual instructor overrides. It does not rebuild loop temperatures, zone temperatures, actuator positions, or latched equipment damage; use Restart for a deterministic lab baseline.",
       "RESET ENGINE",
     );
     if (!confirmed) return;

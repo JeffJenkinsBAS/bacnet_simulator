@@ -19,6 +19,7 @@ from app.equipment.base import EquipmentModel
 logger = logging.getLogger("aci_sim.engine")
 
 TICK_INTERVAL_SECONDS = 1.0
+MAX_PHYSICS_STEP_SECONDS = 1.0
 
 
 class SimulationEngine:
@@ -41,6 +42,30 @@ class SimulationEngine:
         self.tick_count = 0
         self.last_tick_wall_time: float | None = None
 
+    def _advance_physics(self, dt_seconds: float) -> None:
+        """Advance the coupled equipment graph with bounded causal steps.
+
+        The UI time multiplier changes simulated time per wall-clock update,
+        not the numerical integration interval. Keeping substeps at one
+        simulated second prevents a 60x run from introducing a 60-second
+        parent/child lag or skipping equipment proof and interlock timing.
+        """
+        remaining = max(0.0, float(dt_seconds))
+        while remaining > 1e-9:
+            step = min(MAX_PHYSICS_STEP_SECONDS, remaining)
+            if self.fault_manager is not None:
+                self.fault_manager.tick(step)
+            if self.scenario_engine is not None:
+                self.scenario_engine.tick(step)
+
+            for eq in self.equipment:
+                try:
+                    eq.tick(step)
+                except Exception:  # noqa: BLE001 - isolate one equipment failure
+                    logger.exception("Error ticking equipment '%s'", eq.equipment_id)
+            self.simulated_seconds_elapsed += step
+            remaining -= step
+
     async def _run_loop(self) -> None:
         logger.info("Simulation engine started")
         try:
@@ -48,22 +73,12 @@ class SimulationEngine:
                 start = time.monotonic()
                 dt = TICK_INTERVAL_SECONDS * self.speed_multiplier
 
-                if self.fault_manager is not None:
-                    self.fault_manager.tick(dt)
-                if self.scenario_engine is not None:
-                    self.scenario_engine.tick(dt)
-
-                for eq in self.equipment:
-                    try:
-                        eq.tick(dt)
-                    except Exception:  # noqa: BLE001 - one bad equipment model must not kill the loop
-                        logger.exception("Error ticking equipment '%s'", eq.equipment_id)
+                self._advance_physics(dt)
                 if self.diagnostics is not None:
                     try:
                         self.diagnostics.tick()
                     except Exception:  # noqa: BLE001 - diagnostics must not stop the simulation
                         logger.exception("Error refreshing command-center diagnostics")
-                self.simulated_seconds_elapsed += dt
                 self.tick_count += 1
                 self.last_tick_wall_time = time.time()
                 elapsed = time.monotonic() - start

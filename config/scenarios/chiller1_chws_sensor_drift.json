@@ -55,6 +55,10 @@
       "value": true,
       "description": "Start the cooling-tower fan for normal heat rejection"
     },
+    { "time_seconds": 5, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "sa_fan_ss", "value": true, "description": "Start AHU-1 to create a downstream process" },
+    { "time_seconds": 5, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 65, "description": "Open the AHU cooling valve to create measurable CHW load and return rise" },
+    { "time_seconds": 5, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "airflow_setpoint", "value": 300, "description": "Request terminal airflow" },
+    { "time_seconds": 5, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "damper_position_command", "value": 75, "description": "Open VAV-3 so AHU cooling reaches a zone" },
     {
       "time_seconds": 120,
       "action": "set_fault",
@@ -69,15 +73,26 @@
     "Chiller-1 CHWS Temp reads normally (near 44F) for the first two minutes",
     "CHWS Temp then climbs gradually and continuously rather than jumping or oscillating",
     "Chiller Status remains proven/OK throughout -- this is a sensor problem, not an equipment failure",
-    "Downstream cooling remains physically normal because this is a sensor-only drift, helping distinguish bad telemetry from true capacity loss"
+    "Plant common CHWS/CHWR, AHU SAT, flow, and downstream cooling remain physically normal because this is a sensor-only drift"
   ],
   "completion_criteria": [
     "Student notices the drift via a trend rather than a single reading",
     "Student differentiates this from a real loss-of-cooling-capacity fault (chiller status, flow, and enable/command points remain normal)"
   ],
-  "instructor_notes": "Good scenario for teaching trend usage specifically -- a single point-in-time reading a few minutes in doesn't look obviously wrong.",
+  "instructor_notes": "Compare the drifting unit sensor with the plant common header, CHWR, CHW flow/load, AHU SAT, and VAV discharge temperature. Those independent process values prevent a single bad sensor from being mistaken for lost compressor capacity.",
   "student_objectives": [
     "Use trend data, not just a single point read, to catch a slow-onset sensor fault",
     "Correctly rule out equipment failure when only a sensor is at fault"
-  ]
+  ],
+  "difficulty": "intermediate",
+  "recommended_speed": 1,
+  "observation_points": [
+    "ACI-SIM-CHILLER-1.chws_temp",
+    "ACI-SIM-CHW-PLANT.chws_temp_common",
+    "ACI-SIM-CHW-PLANT.chwr_temp_common",
+    "ACI-SIM-CHW-PLANT.chws_flow_common",
+    "ACI-SIM-AHU-1.ahu_sa_temp"
+  ],
+  "prerequisites": ["CHW plant flow path", "Trend comparison and sensor validation"],
+  "tags": ["chiller", "sensor", "trend", "parent-child"]
 }

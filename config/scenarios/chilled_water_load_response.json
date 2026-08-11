@@ -1,0 +1,52 @@
+{
+  "scenario_id": "chilled_water_load_response",
+  "title": "CHW Loop Parent-to-Child Cooling Load Response",
+  "description": "Starts the complete Chiller-1 evaporator and condenser paths, establishes AHU/VAV airflow, stages the AHU cooling valve, and removes load so students can trace CHWS, CHWR, flow, coil BTUH, SAT, and zone delivery.",
+  "initial_conditions": {
+    "outside_air_temperature": 92,
+    "outside_air_humidity": 55
+  },
+  "events": [
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chiller_enable", "value": true, "description": "Enable Chiller-1" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_iso_valve", "value": true, "description": "Open the evaporator branch" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_pump_ss", "value": true, "description": "Start chilled-water flow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "cw_pump_ss", "value": true, "description": "Start condenser-water flow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "ct_fan_ss", "value": true, "description": "Start cooling-tower heat rejection" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chiller_ss", "value": true, "description": "Start Chiller-1" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "sa_fan_ss", "value": true, "description": "Start the parent air handler" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "airflow_setpoint", "value": 300, "description": "Request terminal airflow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "damper_position_command", "value": 75, "description": "Open VAV-3 for zone delivery evidence" },
+    { "time_seconds": 120, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 35, "description": "Apply a partial AHU coil load" },
+    { "time_seconds": 240, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 80, "description": "Increase coil flow and building heat pickup" },
+    { "time_seconds": 420, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 0, "description": "Remove the airside load and observe loop coast/pump heat" }
+  ],
+  "expected_results": [
+    "CHW flow appears when pump proof and isolation-valve position establish, even before compressor proof",
+    "Opening the AHU valve increases coil flow and load; CHWR rises above CHWS while AHU SAT falls with actuator and coil lag",
+    "The second valve stage increases the return delta and thermal load without an instantaneous temperature step",
+    "After load removal the finite loop coasts and gains pump/ambient heat rather than snapping CHWS and CHWR together at 55 F"
+  ],
+  "completion_criteria": [
+    "Student traces chiller prerequisites through common headers, AHU coil, SAT, VAV DAT, and zone response",
+    "Student uses flow and temperature delta together instead of treating CHWS alone as proof of useful cooling"
+  ],
+  "instructor_notes": "Recommended at 10x for a roughly 42-second demonstration. Outdoor weather is a target with a 60-simulated-second time constant, so observe the transition rather than expecting an impossible instantaneous weather step. Use RESTART for deterministic thermal replay.",
+  "student_objectives": [
+    "Understand CHW loop energy balance and thermal transport",
+    "Distinguish pump flow, compressor proof, coil demand, and useful airside cooling"
+  ],
+  "difficulty": "intermediate",
+  "recommended_speed": 10,
+  "observation_points": [
+    "ACI-SIM-CHW-PLANT.chws_temp_common",
+    "ACI-SIM-CHW-PLANT.chwr_temp_common",
+    "ACI-SIM-CHW-PLANT.chws_flow_common",
+    "ACI-SIM-CHILLER-1.chiller_status",
+    "ACI-SIM-AHU-1.cooling_valve",
+    "ACI-SIM-AHU-1.ahu_sa_temp",
+    "ACI-SIM-VAV-3.discharge_temp",
+    "ACI-SIM-VAV-3.zone_temp"
+  ],
+  "prerequisites": ["Chiller proof interlocks", "CHW sensible heat equation", "AHU/VAV air path"],
+  "tags": ["chilled-water", "chiller", "ahu", "parent-child", "commissioning"]
+}
