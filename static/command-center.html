@@ -7,8 +7,8 @@
   <title>ACI BACnet Digital Twin</title>
   <link rel="stylesheet" href="/static/vendor/fontawesome/css/fontawesome.min.css">
   <link rel="stylesheet" href="/static/vendor/fontawesome/css/solid.min.css">
-  <link rel="stylesheet" href="/static/styles.css?v=20260724-ahu-command-center">
-  <script src="/static/app.js?v=20260724-ahu-command-center-r2" defer></script>
+  <link rel="stylesheet" href="/static/styles.css?v=20260811-training-p0">
+  <script src="/static/app.js?v=20260811-training-p0" defer></script>
 </head>
 <body>
   <div class="app-shell">
@@ -33,6 +33,10 @@
         <button class="nav-button" type="button" data-view="equipment" aria-label="Equipment" aria-controls="view-equipment">
           <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
           <span>Equipment</span>
+        </button>
+        <button class="nav-button" type="button" data-view="training" aria-label="Training Session" aria-controls="view-training">
+          <i class="fa-solid fa-graduation-cap" aria-hidden="true"></i>
+          <span>Training</span>
         </button>
         <button class="nav-button" type="button" data-view="operations" aria-label="Operations" aria-controls="view-operations">
           <i class="fa-solid fa-sliders" aria-hidden="true"></i>
@@ -601,6 +605,67 @@
               </div>
             </div>
           </article>
+        </section>
+
+        <section class="view" id="view-training" data-view-panel="training" aria-labelledby="training-heading" hidden>
+          <div class="view-heading command-heading">
+            <div>
+              <span class="eyebrow">P0 TRAINING WORKSPACE</span>
+              <h2 id="training-heading">Training Session</h2>
+              <p>Authenticate, restore a deterministic baseline, run preflight, record evidence, and score the attempt.</p>
+            </div>
+            <div class="command-actions">
+              <span class="status-chip" id="training-auth-chip">SIGNED OUT</span>
+              <button class="button button-secondary" id="training-logout" type="button" hidden>LOG OUT</button>
+            </div>
+          </div>
+
+          <div class="operations-grid">
+            <article class="panel">
+              <div class="panel-heading">
+                <div><span class="eyebrow">ACCESS</span><h3>Role Session</h3></div>
+              </div>
+              <form class="stacked-form" id="training-login-form">
+                <label><span>DISPLAY NAME / TEAM</span><input id="training-login-label" type="text" maxlength="80" placeholder="Team A"></label>
+                <label><span>ROLE</span><select id="training-role"><option value="student">Student</option><option value="instructor">Instructor</option></select></label>
+                <label id="training-pin-field"><span>INSTRUCTOR PIN</span><input id="training-pin" type="password" inputmode="numeric" autocomplete="current-password"></label>
+                <button class="button button-primary" type="submit">SIGN IN</button>
+              </form>
+              <p class="panel-note">Students may read telemetry and add evidence markers. Only an instructor token can mutate simulator state.</p>
+            </article>
+
+            <article class="panel panel-wide">
+              <div class="panel-heading">
+                <div><span class="eyebrow">STEP 1</span><h3>Named Baseline</h3></div>
+              </div>
+              <div class="scenario-list" id="training-baseline-list"><span class="panel-note">Loading baselines&hellip;</span></div>
+              <div class="form-row">
+                <label class="compact-field"><span>PRIORITY DECISION</span><select id="training-priority-mode"><option value="">Inspect first</option><option value="retain">Retain external commands</option><option value="release">Release priorities 4&ndash;16</option></select></label>
+              </div>
+              <div class="active-scenario" id="training-priority-summary">External priority state has not been inspected.</div>
+            </article>
+
+            <article class="panel panel-wide">
+              <div class="panel-heading">
+                <div><span class="eyebrow">STEPS 2&ndash;4</span><h3>Preflight and Run</h3></div>
+              </div>
+              <form class="stacked-form" id="training-session-form">
+                <label><span>SCENARIO</span><select id="training-scenario"></select></label>
+                <div class="form-row">
+                  <label><span>TEAM</span><input id="training-team" type="text" maxlength="80" placeholder="Team A"></label>
+                  <label><span>ATTEMPT</span><input id="training-attempt" type="number" min="1" max="999" value="1"></label>
+                </div>
+                <div class="command-actions">
+                  <button class="button button-secondary" id="training-preflight" type="button">RUN PREFLIGHT</button>
+                  <button class="button button-primary" id="training-session-start" type="submit">START SESSION</button>
+                  <button class="button button-secondary" id="training-scenario-start" type="button">START SCENARIO</button>
+                  <button class="button button-danger" id="training-session-finish" type="button">FINISH & SCORE</button>
+                </div>
+              </form>
+              <div class="active-scenario" id="training-preflight-output">Restore a baseline, then run preflight.</div>
+              <div class="active-scenario" id="training-session-output">No training session is active.</div>
+            </article>
+          </div>
         </section>
 
         <section class="view" id="view-operations" data-view-panel="operations" aria-labelledby="operations-heading" hidden>

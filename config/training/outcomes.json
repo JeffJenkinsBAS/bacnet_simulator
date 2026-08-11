@@ -1,0 +1,37 @@
+{
+  "scenarios": {
+    "ahu1_freezestat_bypass_coil_burst": [
+      {"assertion_id": "rupture_latches", "title": "Cooling-coil rupture latches", "point": "ACI-SIM-AHU-1.cooling_coil_rupture_flood", "operator": "eq", "value": true, "start_seconds": 0, "end_seconds": 1200, "for_seconds": 1, "weight": 1}
+    ],
+    "ahu1_freezestat_trip": [
+      {"assertion_id": "fan_stops_on_freezestat", "title": "Supply fan stops after freezestat", "point": "ACI-SIM-AHU-1.sa_fan_status", "operator": "eq", "value": false, "start_seconds": 120, "end_seconds": 180, "for_seconds": 3, "weight": 1}
+    ],
+    "ahu1_high_static_safety_bypass": [
+      {"assertion_id": "duct_failure_latches", "title": "Duct structural failure latches", "point": "ACI-SIM-AHU-1.duct_structural_failure", "operator": "eq", "value": true, "start_seconds": 0, "end_seconds": 600, "for_seconds": 1, "weight": 1}
+    ],
+    "boiler2_ignition_failure": [
+      {"assertion_id": "boiler2_remains_unproved", "title": "Boiler-2 remains unproved", "point": "ACI-SIM-BOILER-2.boiler_ok", "operator": "eq", "value": false, "start_seconds": 65, "end_seconds": 180, "for_seconds": 30, "weight": 1},
+      {"assertion_id": "boiler2_firing_zero", "title": "Boiler-2 firing remains zero", "point": "ACI-SIM-BOILER-2.firing_rate", "operator": "le", "value": 0.1, "start_seconds": 65, "end_seconds": 180, "for_seconds": 30, "weight": 1}
+    ],
+    "chilled_water_load_response": [
+      {"assertion_id": "chwr_above_chws", "title": "Loaded CHWR exceeds CHWS", "point": "ACI-SIM-CHW-PLANT.chwr_temp_common", "operator": "gt", "other_point": "ACI-SIM-CHW-PLANT.chws_temp_common", "offset": 0.25, "start_seconds": 260, "end_seconds": 420, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "chiller_proves", "title": "Chiller-1 proves", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 45, "end_seconds": 180, "for_seconds": 10, "weight": 1}
+    ],
+    "chiller1_chws_sensor_drift": [
+      {"assertion_id": "unit_sensor_diverges", "title": "Unit CHWS sensor diverges from common CHWS", "point": "ACI-SIM-CHILLER-1.chws_temp", "operator": "gt", "other_point": "ACI-SIM-CHW-PLANT.chws_temp_common", "offset": 0.5, "start_seconds": 150, "end_seconds": 480, "for_seconds": 10, "weight": 1}
+    ],
+    "hot_water_reheat_load_response": [
+      {"assertion_id": "hws_above_hwr", "title": "Loaded HWS exceeds HWR", "point": "ACI-SIM-BOILER-MGR.hws_temp_common", "operator": "gt", "other_point": "ACI-SIM-BOILER-MGR.hwr_temp_common", "offset": 0.2, "start_seconds": 150, "end_seconds": 420, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "hw_flow_proven", "title": "Secondary HW flow responds", "point": "ACI-SIM-BOILER-MGR.hws_flow_common", "operator": "gt", "value": 0.1, "start_seconds": 120, "end_seconds": 420, "for_seconds": 20, "weight": 1}
+    ],
+    "simulator_comm_loss": [
+      {"assertion_id": "communications_recover", "title": "Device communications recover", "point": "ACI-SIM-SITE.oa_temp", "operator": "ge", "value": -50, "start_seconds": 150, "end_seconds": 210, "for_seconds": 5, "weight": 1}
+    ],
+    "vav1_reheat_valve_stuck": [
+      {"assertion_id": "hw_load_persists", "title": "Stuck valve sustains HW load after command release", "point": "ACI-SIM-BOILER-MGR.hw_loop_load", "operator": "gt", "value": 100, "start_seconds": 275, "end_seconds": 420, "for_seconds": 20, "weight": 1}
+    ],
+    "vav3_frozen_zone_sensor": [
+      {"assertion_id": "airflow_continues", "title": "Airflow continues while zone sensor is frozen", "point": "ACI-SIM-VAV-3.airflow", "operator": "gt", "value": 25, "start_seconds": 70, "end_seconds": 240, "for_seconds": 30, "weight": 1}
+    ]
+  }
+}

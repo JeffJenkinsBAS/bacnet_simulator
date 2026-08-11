@@ -10,6 +10,7 @@ const VIEW_TITLES = {
   twin: "Digital Twin Command Center",
   "duct-static": "AHU-1 Command Center",
   equipment: "Equipment Explorer",
+  training: "Training Session Workspace",
   operations: "Instructor Operations",
   ai: "AI Orchestration Console",
   logs: "System Logs",
@@ -19,6 +20,7 @@ const HASH_TO_VIEW = {
   "#digital-twin": "twin",
   "#duct-static": "duct-static",
   "#equipment": "equipment",
+  "#training": "training",
   "#operations": "operations",
   "#ai-console": "ai",
   "#logs": "logs",
@@ -145,6 +147,14 @@ const state = {
   groupSignature: "",
   modalResolve: null,
   modalInvoker: null,
+  training: {
+    token: window.sessionStorage.getItem("aci-training-token") || "",
+    role: "",
+    label: "",
+    authRequired: true,
+    baselines: [],
+    activeSession: null,
+  },
 };
 const airflowNodes = new Map();
 
@@ -270,9 +280,12 @@ async function fetchJSON(url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
+    const headers = new Headers(options.headers || {});
+    if (state.training.token) headers.set("Authorization", `Bearer ${state.training.token}`);
     const response = await fetch(url, {
       cache: "no-store",
       ...options,
+      headers,
       signal: controller.signal,
     });
     const raw = await response.text();
@@ -368,6 +381,7 @@ async function runAction(button, action, successMessage, options = {}) {
 }
 
 function setMutationAvailability(enabled) {
+  const instructorEnabled = enabled && (!state.training.authRequired || state.training.role === "instructor");
   const ids = [
     "stop-all", "restart-simulation", "engine-control", "speed-control", "scenario-stop", "scenario-reset",
     "fault-clear-all", "force-apply", "force-release", "proposal-apply",
@@ -375,12 +389,16 @@ function setMutationAvailability(enabled) {
   ];
   for (const id of ids) {
     const element = $(id);
-    if (element) element.disabled = !enabled;
+    if (element) element.disabled = !instructorEnabled;
   }
   for (const formId of ["weather-form", "fault-form", "force-form", "pid-tuning-form"]) {
     const form = $(formId);
     if (!form) continue;
-    for (const control of form.elements) control.disabled = !enabled;
+    for (const control of form.elements) control.disabled = !instructorEnabled;
+  }
+  for (const id of ["training-session-start", "training-scenario-start", "training-session-finish"]) {
+    const element = $(id);
+    if (element) element.disabled = !instructorEnabled;
   }
   renderActiveScenario();
 }
@@ -2063,7 +2081,7 @@ function renderScenarioLibrary() {
     const footer = createElement("div", { className: "scenario-card-footer" });
     footer.appendChild(createElement("span", { text: `${scenario.event_count || 0} TIMED EVENTS` }));
     const run = createElement("button", { className: "button button-primary button-small", type: "button", text: "RUN SCENARIO" });
-    run.disabled = !state.online;
+    run.disabled = !state.online || (state.training.authRequired && state.training.role !== "instructor");
     run.addEventListener("click", async () => {
       const current = state.status?.scenario || {};
       if (current.effects_active) {
@@ -2173,6 +2191,7 @@ async function loadLibraries() {
   if (scenarioResult.status === "fulfilled" && Array.isArray(scenarioResult.value)) {
     state.scenarios = scenarioResult.value;
     renderScenarioLibrary();
+    renderTrainingScenarioOptions();
   }
   if (typeResult.status === "fulfilled" && Array.isArray(typeResult.value)) {
     state.faultTypes = typeResult.value;
@@ -2518,6 +2537,216 @@ function bindDuctStaticControls() {
   });
 }
 
+function renderTrainingScenarioOptions() {
+  const select = $("training-scenario");
+  if (!select) return;
+  const selected = select.value;
+  replaceChildren(select, state.scenarios.map((scenario) => createElement("option", {
+    text: scenario.title || scenario.scenario_id,
+    attrs: { value: scenario.scenario_id },
+  })));
+  if (state.scenarios.some((scenario) => scenario.scenario_id === selected)) select.value = selected;
+}
+
+function renderTrainingAuth() {
+  const role = state.training.role;
+  setText("training-auth-chip", role ? `${role.toUpperCase()} \u00B7 ${state.training.label || "SIGNED IN"}` : "SIGNED OUT");
+  $("training-logout").hidden = !role;
+  $("training-login-form").hidden = Boolean(role);
+  const instructor = !state.training.authRequired || role === "instructor";
+  for (const id of ["training-session-start", "training-scenario-start", "training-session-finish"]) {
+    $(id).disabled = !state.online || !instructor;
+  }
+}
+
+function renderTrainingBaselines(priorityReport = null) {
+  const container = $("training-baseline-list");
+  const fragment = document.createDocumentFragment();
+  const instructor = !state.training.authRequired || state.training.role === "instructor";
+  for (const baseline of state.training.baselines) {
+    const card = createElement("article", { className: "scenario-card" });
+    card.append(
+      createElement("h4", { text: `${baseline.title} \u00B7 v${baseline.version}` }),
+      createElement("p", { text: baseline.description }),
+      createElement("div", { className: "scenario-meta" }, [
+        createElement("span", { text: `${baseline.settle_seconds}s settle` }),
+        createElement("span", { text: baseline.current ? (baseline.settled ? "CURRENT / SETTLED" : "CURRENT / CONSUMED") : (baseline.destructive ? "INSTRUCTOR-ONLY DESTRUCTIVE" : "READY") }),
+      ]),
+    );
+    const actions = createElement("div", { className: "scenario-card-footer" });
+    const restore = createElement("button", { className: "button button-primary button-small", type: "button", text: "BUILD & RESTORE" });
+    const checkpoint = createElement("button", { className: "button button-secondary button-small", type: "button", text: "RESTORE CHECKPOINT" });
+    restore.disabled = !state.online || !instructor;
+    checkpoint.disabled = !state.online || !instructor || !baseline.checkpoint_available;
+    const runRestore = async (useCheckpoint) => {
+      const mode = $("training-priority-mode").value || null;
+      const endpoint = useCheckpoint ? "checkpoints" : "baselines";
+      const result = await runAction(
+        useCheckpoint ? checkpoint : restore,
+        () => fetchJSON(`/api/training/${endpoint}/${encodeURIComponent(baseline.baseline_id)}/restore`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ priority_mode: mode }),
+        }, LONG_REQUEST_TIMEOUT_MS),
+        `${baseline.title} restored`,
+        { refresh: false },
+      );
+      if (result) await loadTraining();
+      else await loadTraining();
+    };
+    restore.addEventListener("click", () => runRestore(false));
+    checkpoint.addEventListener("click", () => runRestore(true));
+    actions.append(restore, checkpoint);
+    card.appendChild(actions);
+    fragment.appendChild(card);
+  }
+  replaceChildren(container, fragment);
+  if (priorityReport) {
+    const text = priorityReport.external_count
+      ? `${priorityReport.external_count} external priority slot(s): ${priorityReport.life_safety_count} life-safety. Select Retain or Release before restore.`
+      : "No external BACnet priorities are active; restore does not require reconciliation.";
+    setText("training-priority-summary", text);
+  }
+}
+
+function renderTrainingSession(summary) {
+  state.training.activeSession = summary?.active === false ? null : summary;
+  if (!state.training.activeSession) {
+    setText("training-session-output", "No training session is active.");
+    return;
+  }
+  const session = state.training.activeSession;
+  const assertions = Array.isArray(session.assertions) ? session.assertions : [];
+  const passed = assertions.filter((item) => item.status === "passed").length;
+  setText(
+    "training-session-output",
+    `${session.run_id} \u00B7 ${session.status} \u00B7 ${session.sample_count} samples \u00B7 ${passed}/${assertions.length} assertions passed${session.score === null || session.score === undefined ? "" : ` \u00B7 score ${session.score}%`}`,
+  );
+}
+
+async function loadTraining() {
+  const [auth, baselines, priorities, active] = await Promise.all([
+    fetchJSON("/api/training/auth/status"),
+    fetchJSON("/api/training/baselines"),
+    fetchJSON("/api/training/priorities"),
+    fetchJSON("/api/training/sessions/active"),
+  ]);
+  state.training.authRequired = auth.auth_required !== false;
+  if (auth.authenticated && auth.identity) {
+    state.training.role = auth.identity.role;
+    state.training.label = auth.identity.label || "";
+  } else {
+    state.training.role = "";
+    state.training.label = "";
+    if (state.training.token) {
+      state.training.token = "";
+      window.sessionStorage.removeItem("aci-training-token");
+    }
+  }
+  state.training.baselines = Array.isArray(baselines) ? baselines : [];
+  renderTrainingAuth();
+  renderTrainingBaselines(priorities);
+  renderTrainingSession(active);
+  renderTrainingScenarioOptions();
+  setMutationAvailability(Boolean(state.online));
+}
+
+function renderPreflight(preflight) {
+  const blockers = (preflight.blockers || []).map((item) => `BLOCK: ${item.message}`);
+  const warnings = (preflight.warnings || []).map((item) => `WARN: ${item.message}`);
+  const lines = [preflight.can_start ? "PASS \u2014 scenario may start" : "FAIL \u2014 correct blockers before RUN", ...blockers, ...warnings];
+  setText("training-preflight-output", lines.join(" \u00B7 "));
+}
+
+function bindTraining() {
+  const role = $("training-role");
+  const togglePin = () => { $("training-pin-field").hidden = role.value !== "instructor"; };
+  role.addEventListener("change", togglePin);
+  togglePin();
+
+  $("training-login-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const result = await runAction(
+      event.submitter,
+      () => fetchJSON("/api/training/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: role.value, pin: $("training-pin").value || null, label: $("training-login-label").value }),
+      }),
+      "Training role authenticated",
+      { refresh: false },
+    );
+    if (!result) return;
+    state.training.token = result.token;
+    window.sessionStorage.setItem("aci-training-token", result.token);
+    $("training-pin").value = "";
+    await loadTraining();
+  });
+
+  $("training-logout").addEventListener("click", async () => {
+    await fetchJSON("/api/training/auth/logout", { method: "POST" });
+    state.training.token = "";
+    window.sessionStorage.removeItem("aci-training-token");
+    await loadTraining();
+  });
+
+  $("training-preflight").addEventListener("click", async () => {
+    const scenarioId = $("training-scenario").value;
+    const result = await runAction(
+      $("training-preflight"),
+      () => fetchJSON(`/api/training/preflight/${encodeURIComponent(scenarioId)}`),
+      "Preflight complete",
+      { refresh: false },
+    );
+    if (result) renderPreflight(result);
+  });
+
+  $("training-session-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const result = await runAction(
+      $("training-session-start"),
+      () => fetchJSON("/api/training/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scenario_id: $("training-scenario").value,
+          team: $("training-team").value,
+          attempt: Number($("training-attempt").value) || 1,
+        }),
+      }),
+      "Training session started",
+      { refresh: false },
+    );
+    if (result) renderTrainingSession(result);
+  });
+
+  $("training-scenario-start").addEventListener("click", async () => {
+    const scenarioId = $("training-scenario").value;
+    const result = await runAction(
+      $("training-scenario-start"),
+      () => fetchJSON(`/api/scenarios/${encodeURIComponent(scenarioId)}/start`, { method: "POST" }),
+      "Scenario timeline started",
+    );
+    if (result) await loadTraining();
+  });
+
+  $("training-session-finish").addEventListener("click", async () => {
+    const runId = state.training.activeSession?.run_id;
+    if (!runId) return toast("No training session is active", "warning");
+    const result = await runAction(
+      $("training-session-finish"),
+      () => fetchJSON(`/api/training/sessions/${encodeURIComponent(runId)}/finish`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      }),
+      "Training attempt scored",
+      { refresh: false },
+    );
+    if (result) renderTrainingSession(result);
+  });
+}
+
 function bindOperations() {
   $("equipment-group-filter").addEventListener("change", renderEquipment);
   $("equipment-search").addEventListener("input", renderEquipment);
@@ -2777,6 +3006,9 @@ function startPolling() {
   window.setInterval(() => {
     if (!document.hidden && state.activeView === "duct-static") refreshDuctStatic();
   }, 1000);
+  window.setInterval(() => {
+    if (!document.hidden && state.activeView === "training") loadTraining().catch(() => {});
+  }, CORE_POLL_MS);
   window.setInterval(updateClock, 1000);
 }
 
@@ -2784,6 +3016,7 @@ async function boot() {
   bindNavigation();
   bindTwinControls();
   bindDuctStaticControls();
+  bindTraining();
   bindOperations();
   bindAi();
   bindSafetyControls();
@@ -2791,7 +3024,7 @@ async function boot() {
   bindVisibility();
   activateView(HASH_TO_VIEW[window.location.hash] || "twin", false);
   updateClock();
-  await Promise.all([refreshCore(true), loadLibraries()]);
+  await Promise.all([refreshCore(true), loadLibraries(), loadTraining()]);
   startPolling();
 }
 

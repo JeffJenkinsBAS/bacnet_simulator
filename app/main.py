@@ -53,9 +53,27 @@ from app.scenario import ScenarioEngine
 from app.services.audit_service import AuditService
 from app.services.orchestration_service import OrchestrationService
 from app.transport import BacnetTransport
+from app.training import TrainingAuth, TrainingManager
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
 logger = logging.getLogger("aci_sim.main")
+
+
+def load_or_create_training_pin() -> str:
+    """Use an environment override or a stable local-only generated PIN."""
+    configured = os.getenv("ACI_SIM_INSTRUCTOR_PIN")
+    if configured:
+        return configured
+    pin_path = Path(__file__).resolve().parent.parent / "logs" / "training-instructor-pin.txt"
+    pin_path.parent.mkdir(parents=True, exist_ok=True)
+    if pin_path.exists():
+        return pin_path.read_text(encoding="utf-8").strip()
+    import secrets
+
+    pin = f"{secrets.randbelow(1_000_000):06d}"
+    pin_path.write_text(pin + "\n", encoding="utf-8")
+    logger.warning("Generated local training instructor PIN at %s", pin_path)
+    return pin
 
 
 def load_network_config() -> NetworkConfig:
@@ -303,6 +321,21 @@ def build_application() -> tuple[FastAPI, BacnetTransport, SimulationEngine, Fau
         ollama_client, registry, fault_manager, scenario_engine, audit_service
     )
 
+    equipment_factory = lambda: build_equipment(transport.registry, fault_manager)
+    training_manager = TrainingManager(
+        engine=engine,
+        registry=registry,
+        fault_manager=fault_manager,
+        scenario_engine=scenario_engine,
+        equipment_factory=equipment_factory,
+        baseline_path=CONFIG_DIR / "training" / "baselines.json",
+        outcomes_path=CONFIG_DIR / "training" / "outcomes.json",
+        auth=TrainingAuth(load_or_create_training_pin(), required=True),
+        get_last_command=lambda: transport.app.last_command_received if transport.app else None,
+        evidence_dir=Path(__file__).resolve().parent.parent / "artifacts" / "training",
+    )
+    engine.training_manager = training_manager
+
     api_app = create_app(
         transport,
         engine,
@@ -311,10 +344,8 @@ def build_application() -> tuple[FastAPI, BacnetTransport, SimulationEngine, Fau
         orchestration_service,
         ollama_client,
         diagnostics=diagnostics,
-        equipment_factory=lambda: build_equipment(
-            transport.registry,
-            fault_manager,
-        ),
+        equipment_factory=equipment_factory,
+        training_manager=training_manager,
     )
     return api_app, transport, engine, fault_manager, scenario_engine
 

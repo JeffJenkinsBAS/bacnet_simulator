@@ -1,0 +1,59 @@
+{
+  "baselines": [
+    {
+      "baseline_id": "neutral_commissioning",
+      "version": "1.0.0",
+      "title": "Neutral Commissioning",
+      "description": "Equipment at defaults with neutral weather for BACnet, priority, COV, command/proof, and recovery exercises.",
+      "weather": {"outside_air_temperature": 70.0, "outside_air_humidity": 50.0},
+      "speed_multiplier": 1.0,
+      "settle_seconds": 120
+    },
+    {
+      "baseline_id": "summer_hot_humid",
+      "version": "1.0.0",
+      "title": "Summer Hot and Humid",
+      "description": "Mechanical-cooling weather with economizer lockout for CHW, SAT, drift, and load tracing.",
+      "weather": {"outside_air_temperature": 92.0, "outside_air_humidity": 58.0},
+      "speed_multiplier": 1.0,
+      "settle_seconds": 300
+    },
+    {
+      "baseline_id": "shoulder_economizer",
+      "version": "1.0.0",
+      "title": "Shoulder Economizer",
+      "description": "Cool, dry outside air suitable for economizer and integrated-cooling exercises.",
+      "weather": {"outside_air_temperature": 52.0, "outside_air_humidity": 35.0},
+      "speed_multiplier": 1.0,
+      "settle_seconds": 240
+    },
+    {
+      "baseline_id": "winter_heating",
+      "version": "1.0.0",
+      "title": "Winter Heating",
+      "description": "Cold-weather baseline for boiler, reheat, freeze-protection, pressure, and infiltration labs.",
+      "weather": {"outside_air_temperature": 20.0, "outside_air_humidity": 40.0},
+      "speed_multiplier": 1.0,
+      "settle_seconds": 300
+    },
+    {
+      "baseline_id": "after_hours_low_load",
+      "version": "1.0.0",
+      "title": "After Hours Low Load",
+      "description": "Low-load state for override, simultaneous heating/cooling, and energy-waste exercises.",
+      "weather": {"outside_air_temperature": 60.0, "outside_air_humidity": 45.0},
+      "speed_multiplier": 1.0,
+      "settle_seconds": 180
+    },
+    {
+      "baseline_id": "destructive_cold_weather",
+      "version": "1.0.0",
+      "title": "Destructive Cold Weather",
+      "description": "Instructor-only cold exposure for freezestat bypass and frozen-coil demonstrations.",
+      "weather": {"outside_air_temperature": 5.0, "outside_air_humidity": 50.0},
+      "speed_multiplier": 1.0,
+      "settle_seconds": 300,
+      "destructive": true
+    }
+  ]
+}

@@ -2,10 +2,9 @@
 FastAPI application: the Basic UI, extended in Phase 4 with fault
 injection and scenario control endpoints for the Instructor Panel, and in
 Phase 6a with LLM orchestration endpoints. Still deliberately simple:
-polling-based REST endpoints, one static HTML dashboard, no auth (isolated
-training bench only) -- see HANDOFF.md's open question about whether that
-still holds once Phase 6d (dynamic equipment) is unlocked; not revisited
-for 6a since 6a's action set doesn't touch the BACnet object model.
+polling-based REST endpoints and one static HTML dashboard. The P0 training
+layer adds short-lived instructor/student role tokens around every mutation
+while leaving telemetry readable to a student station.
 """
 from __future__ import annotations
 
@@ -18,7 +17,7 @@ import secrets
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Literal, Optional
 
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -35,6 +34,7 @@ from app.logging_setup import recent_app_events, recent_bacnet_traffic
 from app.scenario import ScenarioEngine
 from app.services.orchestration_service import OrchestrationService
 from app.transport import BacnetTransport
+from app.training import PriorityReconciliationRequired, TrainingManager
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 logger = logging.getLogger("aci_sim.api")
@@ -74,6 +74,32 @@ class DuctStaticPidRequest(BaseModel):
     )
 
 
+class TrainingLoginRequest(BaseModel):
+    role: str
+    pin: str | None = None
+    label: str = ""
+
+
+class BaselineRestoreRequest(BaseModel):
+    priority_mode: Literal["retain", "release"] | None = None
+
+
+class TrainingSessionStartRequest(BaseModel):
+    scenario_id: str
+    team: str = ""
+    attempt: int = Field(default=1, ge=1, le=999)
+    override_reason: str | None = None
+
+
+class TrainingMarkerRequest(BaseModel):
+    action: str = Field(min_length=1, max_length=80)
+    detail: dict[str, Any] = Field(default_factory=dict)
+
+
+class TrainingSessionFinishRequest(BaseModel):
+    status: Literal["completed", "aborted"] = "completed"
+
+
 def _bundle_digest(bundle: LlmActionBundle) -> str:
     """Create a stable digest for one-time proposal approval."""
     payload = json.dumps(
@@ -90,6 +116,7 @@ def create_app(
     orchestration_service: OrchestrationService, ollama_client: OllamaClient,
     diagnostics: CommandCenterDiagnostics | None = None,
     equipment_factory: Callable[[], list] | None = None,
+    training_manager: TrainingManager | None = None,
 ) -> FastAPI:
     app = FastAPI(title="ACI BACnet Building Simulation Platform")
     app.state.transport = transport
@@ -104,6 +131,7 @@ def create_app(
     app.state.start_time = time.time()
     app.state.pending_llm_proposals = {}
     app.state.equipment_factory = equipment_factory
+    app.state.training_manager = training_manager
     app.state.restart_lock = asyncio.Lock()
     app.state.lifecycle_lock = asyncio.Lock()
 
@@ -112,8 +140,35 @@ def create_app(
         """Prevent restart from racing another state-changing API request."""
         if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
             return await call_next(request)
+        identity = None
+        if training_manager is not None and training_manager.auth.required:
+            path = request.url.path
+            if path == "/api/training/auth/login":
+                return await call_next(request)
+            identity = training_manager.auth.identity(request.headers.get("authorization"))
+            if identity is None:
+                return JSONResponse({"error": "training authentication required"}, status_code=401)
+            student_allowed = (
+                path == "/api/training/auth/logout"
+                or (path.startswith("/api/training/sessions/") and path.endswith("/markers"))
+            )
+            if identity["role"] != "instructor" and not student_allowed:
+                return JSONResponse({"error": "instructor role required"}, status_code=403)
         async with app.state.lifecycle_lock:
-            return await call_next(request)
+            response = await call_next(request)
+        if training_manager is not None and identity is not None:
+            training_manager.record_action(
+                identity["role"],
+                "api-mutation",
+                {"method": request.method, "path": request.url.path, "status_code": response.status_code},
+            )
+            if response.status_code < 400 and (
+                request.url.path.startswith("/api/faults")
+                or request.url.path in {"/api/force", "/api/release", "/api/site/weather"}
+                or request.url.path.startswith("/api/ahu/duct-static/pid")
+            ):
+                training_manager.consume_baseline()
+        return response
 
     @app.get("/")
     def index() -> FileResponse:
@@ -178,6 +233,17 @@ def create_app(
                     "target_oa_temp_f": getattr(site_model, "target_oa_temp_f", None),
                     "target_oa_humidity_pct": getattr(site_model, "target_oa_humidity_pct", None),
                 },
+                "training": (
+                    {
+                        "auth_required": training_manager.auth.required,
+                        "current_baseline_id": training_manager.current_baseline_id,
+                        "current_baseline_version": training_manager.current_baseline_version,
+                        "baseline_settled": training_manager.baseline_settled,
+                        "active_run_id": training_manager.active_run_id,
+                    }
+                    if training_manager is not None
+                    else {"auth_required": False, "available": False}
+                ),
                 "uptime_seconds": round(time.time() - app.state.start_time, 1),
             }
         )
@@ -285,6 +351,8 @@ def create_app(
         scenario_engine.reset()
         await scenario_engine.drain_priority_writes()
         transport.registry.synchronize_reliability(fault_manager)
+        if training_manager is not None:
+            training_manager.invalidate("stop-all")
         return JSONResponse({"simulation": engine.status(), "faults_cleared": True})
 
     @app.post("/api/simulation/restart")
@@ -373,6 +441,8 @@ def create_app(
                     status_code=500,
                 )
             app.state.start_time = time.time()
+            if training_manager is not None:
+                training_manager.invalidate("manual-restart")
             return JSONResponse(
                 {
                     "restarted": True,
@@ -657,6 +727,141 @@ def create_app(
         await scenario_engine.drain_priority_writes()
         return JSONResponse({"released": True, "group_id": req.group_id, "alias": req.alias})
 
+    # ---- P0 training workflow -------------------------------------------
+
+    @app.get("/api/training/auth/status")
+    def training_auth_status(request: Request) -> JSONResponse:
+        if training_manager is None:
+            return JSONResponse({"available": False, "auth_required": False})
+        identity = training_manager.auth.identity(request.headers.get("authorization"))
+        return JSONResponse({
+            "available": True,
+            "auth_required": training_manager.auth.required,
+            "authenticated": identity is not None,
+            "identity": identity,
+        })
+
+    @app.post("/api/training/auth/login")
+    def training_login(req: TrainingLoginRequest) -> JSONResponse:
+        if training_manager is None:
+            return JSONResponse({"error": "training layer is unavailable"}, status_code=503)
+        try:
+            result = training_manager.auth.login(req.role, req.pin, req.label)
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=422)
+        except PermissionError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=403)
+        return JSONResponse(result)
+
+    @app.post("/api/training/auth/logout")
+    def training_logout(request: Request) -> JSONResponse:
+        if training_manager is not None:
+            training_manager.auth.logout(request.headers.get("authorization"))
+        return JSONResponse({"logged_out": True})
+
+    @app.get("/api/training/baselines")
+    def training_baselines() -> JSONResponse:
+        if training_manager is None:
+            return JSONResponse({"error": "training layer is unavailable"}, status_code=503)
+        return JSONResponse(training_manager.list_baselines())
+
+    @app.get("/api/training/priorities")
+    def training_priorities() -> JSONResponse:
+        if training_manager is None:
+            return JSONResponse({"error": "training layer is unavailable"}, status_code=503)
+        return JSONResponse(training_manager.priority_report())
+
+    @app.post("/api/training/baselines/{baseline_id}/restore")
+    async def training_restore_baseline(baseline_id: str, req: BaselineRestoreRequest) -> JSONResponse:
+        if training_manager is None:
+            return JSONResponse({"error": "training layer is unavailable"}, status_code=503)
+        try:
+            return JSONResponse(await training_manager.restore_baseline(baseline_id, req.priority_mode))
+        except KeyError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        except PriorityReconciliationRequired as exc:
+            return JSONResponse({"error": str(exc), "priority_report": exc.report}, status_code=409)
+
+    @app.post("/api/training/checkpoints/{baseline_id}/restore")
+    async def training_restore_checkpoint(baseline_id: str, req: BaselineRestoreRequest) -> JSONResponse:
+        if training_manager is None:
+            return JSONResponse({"error": "training layer is unavailable"}, status_code=503)
+        try:
+            return JSONResponse(await training_manager.restore_checkpoint(baseline_id, req.priority_mode))
+        except KeyError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        except PriorityReconciliationRequired as exc:
+            return JSONResponse({"error": str(exc), "priority_report": exc.report}, status_code=409)
+
+    @app.get("/api/training/preflight/{scenario_id}")
+    def training_preflight(scenario_id: str) -> JSONResponse:
+        if training_manager is None:
+            return JSONResponse({"error": "training layer is unavailable"}, status_code=503)
+        try:
+            return JSONResponse(training_manager.preflight(scenario_id))
+        except KeyError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+
+    @app.post("/api/training/sessions")
+    def training_start_session(req: TrainingSessionStartRequest) -> JSONResponse:
+        if training_manager is None:
+            return JSONResponse({"error": "training layer is unavailable"}, status_code=503)
+        try:
+            return JSONResponse(training_manager.start_session(
+                req.scenario_id, req.team, req.attempt, req.override_reason
+            ))
+        except KeyError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        except RuntimeError as exc:
+            preflight = None
+            try:
+                preflight = training_manager.preflight(req.scenario_id)
+            except KeyError:
+                pass
+            return JSONResponse({"error": str(exc), "preflight": preflight}, status_code=409)
+
+    @app.get("/api/training/sessions/active")
+    def training_active_session() -> JSONResponse:
+        if training_manager is None:
+            return JSONResponse({"error": "training layer is unavailable"}, status_code=503)
+        if training_manager.active_run_id is None:
+            return JSONResponse({"active": False})
+        return JSONResponse({"active": True, **training_manager.session_summary(training_manager.active_run_id)})
+
+    @app.get("/api/training/sessions/{run_id}")
+    def training_session(run_id: str) -> JSONResponse:
+        if training_manager is None:
+            return JSONResponse({"error": "training layer is unavailable"}, status_code=503)
+        if run_id not in training_manager.sessions:
+            return JSONResponse({"error": "training session not found"}, status_code=404)
+        return JSONResponse(training_manager.session_summary(run_id))
+
+    @app.get("/api/training/sessions/{run_id}/evidence")
+    def training_session_evidence(run_id: str, limit: int = Query(default=1000, ge=1, le=20000)) -> JSONResponse:
+        if training_manager is None:
+            return JSONResponse({"error": "training layer is unavailable"}, status_code=503)
+        if run_id not in training_manager.sessions:
+            return JSONResponse({"error": "training session not found"}, status_code=404)
+        return JSONResponse(training_manager.evidence(run_id, limit))
+
+    @app.post("/api/training/sessions/{run_id}/markers")
+    def training_session_marker(run_id: str, req: TrainingMarkerRequest, request: Request) -> JSONResponse:
+        if training_manager is None:
+            return JSONResponse({"error": "training layer is unavailable"}, status_code=503)
+        if run_id != training_manager.active_run_id:
+            return JSONResponse({"error": "training session is not active"}, status_code=409)
+        identity = training_manager.auth.identity(request.headers.get("authorization")) or {"role": "instructor"}
+        training_manager.record_action(identity["role"], req.action, req.detail)
+        return JSONResponse({"recorded": True})
+
+    @app.post("/api/training/sessions/{run_id}/finish")
+    def training_finish_session(run_id: str, req: TrainingSessionFinishRequest) -> JSONResponse:
+        if training_manager is None:
+            return JSONResponse({"error": "training layer is unavailable"}, status_code=503)
+        if run_id != training_manager.active_run_id:
+            return JSONResponse({"error": "training session is not active"}, status_code=409)
+        return JSONResponse(training_manager.finish_session(req.status))
+
     # ---- Phase 4: scenarios ---------------------------------------------
 
     @app.get("/api/scenarios")
@@ -686,11 +891,27 @@ def create_app(
 
     @app.post("/api/scenarios/{scenario_id}/start")
     async def start_scenario(scenario_id: str) -> JSONResponse:
+        if training_manager is not None:
+            active_run_id = training_manager.active_run_id
+            if active_run_id is None:
+                return JSONResponse(
+                    {"error": "start a preflighted training session before starting a scenario"},
+                    status_code=409,
+                )
+            active_session = training_manager.sessions[active_run_id]
+            if active_session.scenario_id != scenario_id:
+                return JSONResponse(
+                    {"error": f"active training session is for '{active_session.scenario_id}'"},
+                    status_code=409,
+                )
         try:
             scenario_engine.start(scenario_id)
             await scenario_engine.drain_priority_writes()
         except KeyError as e:
             return JSONResponse({"error": str(e)}, status_code=404)
+        if training_manager is not None:
+            training_manager.record_action("instructor", "scenario-start", {"scenario_id": scenario_id})
+            training_manager.consume_baseline()
         return JSONResponse(scenario_engine.status())
 
     @app.post("/api/scenarios/stop")

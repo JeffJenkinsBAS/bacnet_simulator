@@ -29,11 +29,13 @@ class SimulationEngine:
         fault_manager=None,
         scenario_engine=None,
         diagnostics=None,
+        training_manager=None,
     ):
         self.equipment = equipment
         self.fault_manager = fault_manager
         self.scenario_engine = scenario_engine
         self.diagnostics = diagnostics
+        self.training_manager = training_manager
         self.running = False
         self.speed_multiplier = 1.0
         self.simulated_seconds_elapsed = 0.0
@@ -64,6 +66,11 @@ class SimulationEngine:
                 except Exception:  # noqa: BLE001 - isolate one equipment failure
                     logger.exception("Error ticking equipment '%s'", eq.equipment_id)
             self.simulated_seconds_elapsed += step
+            if self.training_manager is not None:
+                try:
+                    self.training_manager.tick(self.simulated_seconds_elapsed)
+                except Exception:  # noqa: BLE001 - evidence capture must not stop physics
+                    logger.exception("Error recording training-session evidence")
             remaining -= step
 
     async def _run_loop(self) -> None:
