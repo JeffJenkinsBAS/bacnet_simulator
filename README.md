@@ -16,8 +16,13 @@ VAV-1, VAV-2, Simulation Manager) exactly as real field hardware would.
 The command center now includes a **Training** workspace with authenticated
 student/instructor roles, six versioned baselines, deterministic checkpoint
 restore, BACnet priority reconciliation, scenario preflight, internal evidence
-recording, and time-window scoring for all ten shipped scenarios. Completed
+recording, and time-window scoring for all shipped scenarios. Completed
 attempts are written to `artifacts/training/` as JSON evidence bundles.
+
+The P1 scenario pack expands the catalog to **16 graded scenarios** with
+economizer psychrometrics/actuator diagnosis, CHW bypass and pump-proof
+failures, negative-building-pressure recovery, BACnet priority conflict, and
+blinded parent-to-child comfort diagnosis.
 
 Set `ACI_SIM_INSTRUCTOR_PIN` for the Windows service, or read the locally
 generated PIN from `logs/training-instructor-pin.txt`. See
@@ -26,7 +31,7 @@ permissions, endpoints, and recovery semantics.
 
 **Status:** Phases 1–6a complete plus audit-and-hardening passes
 (2026-07-17 through 2026-08-11). The configured 355-point release passes
-**198 automated tests**. The historical 329-point release was verified live
+**199 automated tests**. The historical 329-point release was verified live
 on the Windows bench service before this additive HW-loop telemetry release.
 The historical 321-point baseline passed 129 tests. Core BACnet behavior has
 been verified against real
@@ -290,6 +295,7 @@ but deaf ([`SIMULATION_AUDIT.md`](SIMULATION_AUDIT.md) status notes).
 | [`docs/AUDIT_2026-07-23.md`](docs/AUDIT_2026-07-23.md) | Live-bench risks, configuration hardening, GUI review, agent feasibility, and remaining work |
 | [`docs/COMMAND_CENTER.md`](docs/COMMAND_CENTER.md) | Expanded 28-group digital twin, VAV topology, pressure behavior, diagnostics, and responsive UI guidance |
 | [`docs/TRAINING_P0_LAYER.md`](docs/TRAINING_P0_LAYER.md) | Baselines, deterministic restore, priority reconciliation, preflight, evidence, scoring, and role permissions |
+| [`docs/TRAINING_P1_SCENARIO_PACK.md`](docs/TRAINING_P1_SCENARIO_PACK.md) | Six calibrated P1 economizer, hydronic, pressure, priority, and comfort-diagnostic labs |
 | [`docs/HVAC_REALISM_MODEL.md`](docs/HVAC_REALISM_MODEL.md) | Parent-equipment dependencies, air-delivery colors, thermal ranges, sequence guidance, and realism backlog |
 | [`docs/DUCT_STATIC_PID_LAB.md`](docs/DUCT_STATIC_PID_LAB.md) | AHU command-center device order, BACnet point contract, pressure/freezestat physics, safety-bypass lessons, PID tuning, restart lifecycle, and cutover plan |
 | [`docs/REALISM_CUTOVER_CHECKLIST.md`](docs/REALISM_CUTOVER_CHECKLIST.md) | Controlled Windows-service restart, local API, physical-chain, WebCTRL, UI, and rollback checks |

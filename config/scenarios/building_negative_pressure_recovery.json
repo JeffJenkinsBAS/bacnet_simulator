@@ -1,0 +1,49 @@
+{
+  "scenario_id": "building_negative_pressure_recovery",
+  "title": "Exhaust Imbalance Drives Negative Building Pressure",
+  "description": "Establishes occupied AHU airflow, drives EF-1 to excessive exhaust, and then restores a balanced exhaust setting so students can connect fan/damper operation to building pressure and infiltration load.",
+  "initial_conditions": {
+    "outside_air_temperature": 88,
+    "outside_air_humidity": 60
+  },
+  "events": [
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "sa_fan_ss", "value": true, "description": "Start supply fan" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "ra_fan_ss", "value": true, "description": "Start return fan" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "airflow_setpoint", "value": 300, "description": "Establish supply airflow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "damper_position_command", "value": 100, "description": "Open VAV-3" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-EF-1", "alias": "exh_fan_ss", "value": true, "description": "Start exhaust fan" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-EF-1", "alias": "exh_air_damper", "value": 20, "description": "Begin at low exhaust" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-EF-1", "alias": "vfd_speed_command", "value": 20, "description": "Begin at low exhaust speed" },
+    { "time_seconds": 180, "action": "set_value", "equipment": "ACI-SIM-EF-1", "alias": "exh_air_damper", "value": 100, "description": "Open exhaust damper fully" },
+    { "time_seconds": 180, "action": "set_value", "equipment": "ACI-SIM-EF-1", "alias": "vfd_speed_command", "value": 100, "description": "Drive excessive exhaust" },
+    { "time_seconds": 360, "action": "set_value", "equipment": "ACI-SIM-EF-1", "alias": "exh_air_damper", "value": 20, "description": "Restore low exhaust damper" },
+    { "time_seconds": 360, "action": "set_value", "equipment": "ACI-SIM-EF-1", "alias": "vfd_speed_command", "value": 20, "description": "Restore low exhaust speed" },
+    { "time_seconds": 480, "action": "set_value", "equipment": "ACI-SIM-EF-1", "alias": "exh_fan_ss", "value": false, "description": "Stop EF-1 after recovery evidence" }
+  ],
+  "expected_results": [
+    "Low exhaust allows supply airflow to maintain positive or near-neutral pressure",
+    "Full exhaust drives pressure negative after fan and damper travel delays",
+    "Reducing exhaust allows the building pressure state to recover instead of snapping instantly",
+    "Negative pressure increases envelope infiltration load in the zone models"
+  ],
+  "completion_criteria": [
+    "Student explains pressure sign from the OA/supply/exhaust mass balance",
+    "Student identifies EF speed, damper, and proof as separate diagnostic layers"
+  ],
+  "instructor_notes": "This is general building-pressure training, not a smoke-control sequence. Do not use these representative pressure limits as life-safety acceptance criteria.",
+  "student_objectives": ["Connect exhaust imbalance to building pressure", "Relate negative pressure to infiltration and comfort load"],
+  "difficulty": "intermediate",
+  "recommended_speed": 10,
+  "observation_points": [
+    "ACI-SIM-SITE.building_pressure",
+    "ACI-SIM-AHU-1.sa_fan_status",
+    "ACI-SIM-AHU-1.ra_fan_status",
+    "ACI-SIM-EF-1.exh_fan_ss",
+    "ACI-SIM-EF-1.fan_status",
+    "ACI-SIM-EF-1.exh_air_damper",
+    "ACI-SIM-EF-1.vfd_speed_command",
+    "ACI-SIM-VAV-3.zone_temp"
+  ],
+  "prerequisites": ["Air mass balance", "Fan/damper proof", "Pressure-driven infiltration"],
+  "tags": ["building-pressure", "exhaust", "infiltration", "airside", "commissioning"]
+}

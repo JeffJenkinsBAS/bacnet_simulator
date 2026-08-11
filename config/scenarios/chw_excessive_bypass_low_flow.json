@@ -1,0 +1,52 @@
+{
+  "scenario_id": "chw_excessive_bypass_low_flow",
+  "title": "CHW Excessive Bypass Causes Evaporator Low Flow",
+  "description": "Starts a complete Chiller-1 and AHU cooling path, then opens the evaporator-barrel bypass far enough to preserve common pump flow while starving the evaporator and dropping compressor proof.",
+  "initial_conditions": {
+    "outside_air_temperature": 92,
+    "outside_air_humidity": 55
+  },
+  "events": [
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chiller_enable", "value": true, "description": "Enable Chiller-1" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_iso_valve", "value": true, "description": "Open evaporator branch" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_pump_ss", "value": true, "description": "Start CHW pump" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "cw_pump_ss", "value": true, "description": "Start condenser pump" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "ct_fan_ss", "value": true, "description": "Start tower fan" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "ct_vfd_output", "value": 100, "description": "Provide full heat rejection" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "byp_vlv_output", "value": 0, "description": "Begin with full evaporator flow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chiller_ss", "value": true, "description": "Start compressor sequence" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "sa_fan_ss", "value": true, "description": "Start AHU" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 80, "description": "Apply coil load" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "airflow_setpoint", "value": 300, "description": "Request zone airflow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "damper_position_command", "value": 100, "description": "Open VAV-3" },
+    { "time_seconds": 180, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "byp_vlv_output", "value": 80, "description": "Divert most primary flow around the evaporator" },
+    { "time_seconds": 360, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "byp_vlv_output", "value": 0, "description": "Close bypass and restore evaporator flow" },
+    { "time_seconds": 540, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 0, "description": "Remove load after recovery" }
+  ],
+  "expected_results": [
+    "Chiller proof establishes after normal flow and startup delay",
+    "Opening the bypass leaves common CHW flow visible but reduces barrel flow below the chiller permit and drops proof/capacity",
+    "Closing the bypass restores evaporator flow; proof returns only after the normal startup delay",
+    "Students must not treat common-header GPM alone as proof of evaporator flow"
+  ],
+  "completion_criteria": [
+    "Student separates common flow, bypass flow, evaporator flow, and compressor proof",
+    "Student identifies excessive bypass rather than misdiagnosing the common CHW pump"
+  ],
+  "instructor_notes": "The modeled bypass is an evaporator-barrel bypass. Confirm that this matches the intended training schematic before using the thresholds as a site standard.",
+  "student_objectives": ["Diagnose low evaporator flow with common flow still present", "Explain low-delta-T and bypass consequences"],
+  "difficulty": "advanced",
+  "recommended_speed": 10,
+  "observation_points": [
+    "ACI-SIM-CHILLER-1.byp_vlv_output",
+    "ACI-SIM-CHILLER-1.chw_pump_status",
+    "ACI-SIM-CHILLER-1.chiller_status",
+    "ACI-SIM-CHW-PLANT.chws_flow_common",
+    "ACI-SIM-CHW-PLANT.chws_temp_common",
+    "ACI-SIM-CHW-PLANT.chwr_temp_common",
+    "ACI-SIM-AHU-1.cooling_valve",
+    "ACI-SIM-AHU-1.ahu_sa_temp"
+  ],
+  "prerequisites": ["Primary bypass topology", "Evaporator minimum flow", "Chiller proof timing"],
+  "tags": ["chilled-water", "bypass", "low-flow", "chiller", "diagnostics"]
+}

@@ -10,7 +10,7 @@ runtime. It adds:
 - explicit inspection, retention, or release of WebCTRL/external priorities;
 - scenario preflight with blocking and warning conditions;
 - internally sampled session evidence using simulated and wall time;
-- time-window assertions and weighted automated scores for all ten scenarios;
+- time-window assertions and weighted automated scores for every shipped scenario;
 - durable JSON evidence under `artifacts/training/<run-id>.json`;
 - short-lived student and instructor role tokens around every mutation endpoint;
 - a Training Session workspace in the command center.
@@ -144,3 +144,6 @@ or evidence bundles externally.
   with HTTP 403, accepted a student evidence marker, and persisted two
   one-second samples. BACnet ended with zero blocked messages and zero COV
   notification failures.
+
+The follow-on P1 pack expands this foundation from 10 to 16 graded scenarios;
+see `TRAINING_P1_SCENARIO_PACK.md`.

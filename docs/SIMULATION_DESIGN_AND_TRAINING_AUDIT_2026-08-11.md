@@ -276,6 +276,12 @@ useful advanced exercise, but it limits introductory and auto-graded labs.
 
 ### P1 — highest-value use cases
 
+The first P1 scenario pack now covers excessive CHW bypass, CHW pump-proof
+loss, favorable-to-warm-humid economizer transition, a stuck economizer
+damper, negative-building-pressure recovery, and BACnet Priority-3 conflict.
+The remaining items below require additional scenario variants or explicit
+model hooks.
+
 1. Chiller failed-to-prove caused separately by CHW pump, isolation valve,
    condenser-water pump, tower fan/high head, and plant shutdown interlocks.
 2. CHW low-delta-T syndrome, excessive bypass, sensor bias, loss of flow, and

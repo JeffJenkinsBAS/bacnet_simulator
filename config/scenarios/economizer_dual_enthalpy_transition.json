@@ -1,0 +1,47 @@
+{
+  "scenario_id": "economizer_dual_enthalpy_transition",
+  "title": "Economizer Dual-Enthalpy Enable to Warm-Humid Lockout",
+  "description": "Runs AHU-1 at full economizer request under cool, dry outside air, then transitions to warm, humid weather so students can distinguish the commanded damper from the physically permitted outside-air fraction.",
+  "initial_conditions": {
+    "outside_air_temperature": 50,
+    "outside_air_humidity": 30
+  },
+  "events": [
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "sa_fan_ss", "value": true, "description": "Start supply fan" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "ra_fan_ss", "value": true, "description": "Start return fan" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "economizer", "value": 100, "description": "Request full outside air" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 0, "description": "Remove mechanical cooling from the comparison" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "airflow_setpoint", "value": 300, "description": "Establish occupied airflow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "damper_position_command", "value": 100, "description": "Open VAV-3 for return-air transport" },
+    { "time_seconds": 240, "action": "set_weather", "parameters": { "outside_air_temperature": 85, "outside_air_humidity": 65 }, "description": "Cross the warm-humid lockout boundary" },
+    { "time_seconds": 480, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "economizer", "value": 20, "description": "Return to minimum ventilation after the comparison" }
+  ],
+  "expected_results": [
+    "Cool, dry outside air is lower enthalpy than return air, so mixed air moves materially toward outside-air temperature",
+    "As outside air warms above 60 F while humidity rises above 35 percent, the warm-humid lockout limits effective outside air even though the 100 percent request remains visible",
+    "Mixed-air temperature moves back toward return air with actuator and plenum lag rather than stepping instantly"
+  ],
+  "completion_criteria": [
+    "Student explains command, effective damper, and mixed-air consequence as separate layers",
+    "Student uses both temperature and humidity/enthalpy instead of dry-bulb alone"
+  ],
+  "instructor_notes": "Use shoulder_economizer or neutral_commissioning. Recommended at 10x for a 48-second timeline. The weather target has a 60-simulated-second time constant. This is an enable-to-lockout comparison, not a universal site sequence.",
+  "student_objectives": [
+    "Apply dual-enthalpy economizer reasoning",
+    "Recognize warm-humid lockout despite an unchanged command"
+  ],
+  "difficulty": "intermediate",
+  "recommended_speed": 10,
+  "observation_points": [
+    "ACI-SIM-SITE.oa_temp",
+    "ACI-SIM-SITE.oa_humidity",
+    "ACI-SIM-AHU-1.ahu_ra_temp",
+    "ACI-SIM-AHU-1.ahu_ra_humidity",
+    "ACI-SIM-AHU-1.ahu_ma_temp",
+    "ACI-SIM-AHU-1.ahu_ma_humidity",
+    "ACI-SIM-AHU-1.economizer",
+    "ACI-SIM-AHU-1.sa_fan_status"
+  ],
+  "prerequisites": ["Moist-air enthalpy", "Outside/return-air mixing", "Command versus effective position"],
+  "tags": ["ahu", "economizer", "psychrometrics", "enthalpy", "seasonal"]
+}

@@ -1,0 +1,41 @@
+{
+  "scenario_id": "bacnet_priority3_conflict",
+  "title": "WebCTRL Setpoint Blocked by Instructor Priority 3",
+  "description": "Runs the AHU static-pressure loop, forces its setpoint low at instructor Priority 3, and later releases that slot so students can prove why a valid WebCTRL write at a lower BACnet priority does not become effective.",
+  "initial_conditions": {
+    "outside_air_temperature": 70,
+    "outside_air_humidity": 45
+  },
+  "events": [
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "sa_fan_ss", "value": true, "description": "Start AHU static-pressure control" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "airflow_setpoint", "value": 300, "description": "Create duct airflow demand" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "damper_position_command", "value": 100, "description": "Open VAV-3" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "duct_static_pressure_setpoint", "value": 1.5, "description": "Establish a normal instructor setpoint" },
+    { "time_seconds": 60, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "duct_static_pressure_setpoint", "value": 0.25, "description": "Pin the effective setpoint at Priority 3" },
+    { "time_seconds": 240, "action": "release_value", "equipment": "ACI-SIM-AHU-1", "alias": "duct_static_pressure_setpoint", "description": "Relinquish Priority 3 so WebCTRL or the default becomes effective" },
+    { "time_seconds": 360, "action": "release_value", "equipment": "ACI-SIM-AHU-1", "alias": "duct_static_pressure_setpoint", "description": "Keep the timeline open for recovery evidence" }
+  ],
+  "expected_results": [
+    "During the Priority-3 force, WebCTRL can acknowledge a lower-priority write while present value remains 0.25 in. H2O",
+    "Fan speed and measured static respond to the effective value rather than the student's requested value",
+    "After Priority 3 is released, the WebCTRL command or relinquish default immediately regains authority while physical pressure recovers with PID/fan lag"
+  ],
+  "completion_criteria": [
+    "Student inspects the priority array before blaming the controller or network",
+    "Student releases their own test command and verifies the expected effective value and process recovery"
+  ],
+  "instructor_notes": "A real WebCTRL Priority-16 command makes the recovery more obvious; without one, the point returns to its 1.0 in. H2O relinquish default. Preflight priority reconciliation remains separate from this deliberate scenario-owned Priority-3 event.",
+  "student_objectives": ["Distinguish accepted write from effective present value", "Use BACnet priority arrays and relinquish correctly"],
+  "difficulty": "introductory",
+  "recommended_speed": 10,
+  "observation_points": [
+    "ACI-SIM-AHU-1.duct_static_pressure_setpoint",
+    "ACI-SIM-AHU-1.duct_static_pressure",
+    "ACI-SIM-AHU-1.sa_fan_speed_feedback",
+    "ACI-SIM-AHU-1.sa_fan_status",
+    "ACI-SIM-VAV-3.damper_position_command",
+    "ACI-SIM-VAV-3.airflow"
+  ],
+  "prerequisites": ["BACnet priority array", "Relinquish default", "Duct-static PID"],
+  "tags": ["bacnet", "priority", "webctrl", "pid", "command-authority"]
+}

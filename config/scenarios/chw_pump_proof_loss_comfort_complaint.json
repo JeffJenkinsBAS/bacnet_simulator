@@ -1,0 +1,53 @@
+{
+  "scenario_id": "chw_pump_proof_loss_comfort_complaint",
+  "title": "Zone Warming Caused by Parent CHW Pump Proof Loss",
+  "description": "Builds a normal cooling chain, then removes physical CHW-pump proof while commands and the AHU cooling-valve request remain on. The resulting child comfort symptom must be traced back through flow and chiller proof.",
+  "initial_conditions": {
+    "outside_air_temperature": 94,
+    "outside_air_humidity": 58
+  },
+  "events": [
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chiller_enable", "value": true, "description": "Enable Chiller-1" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_iso_valve", "value": true, "description": "Open CHW isolation valve" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_pump_ss", "value": true, "description": "Start CHW pump" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "cw_pump_ss", "value": true, "description": "Start condenser pump" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "ct_fan_ss", "value": true, "description": "Start tower fan" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "ct_vfd_output", "value": 100, "description": "Provide heat rejection" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chiller_ss", "value": true, "description": "Start chiller" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "sa_fan_ss", "value": true, "description": "Start AHU" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 80, "description": "Maintain a strong cooling request" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "airflow_setpoint", "value": 300, "description": "Request zone airflow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "damper_position_command", "value": 100, "description": "Open VAV-3" },
+    { "time_seconds": 180, "action": "set_fault", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_pump_status", "fault": "forced_status", "value": false, "description": "Remove physical pump proof and capacity" },
+    { "time_seconds": 360, "action": "clear_fault", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_pump_status", "fault": "forced_status", "description": "Repair the CHW pump/proof circuit" },
+    { "time_seconds": 540, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 0, "description": "Remove load after recovery" }
+  ],
+  "expected_results": [
+    "The CHW-pump command remains on while pump proof, common flow, and chiller proof fall away",
+    "The AHU cooling-valve request remains high but cannot produce useful cooling without parent water flow",
+    "SAT and VAV discharge/zone temperatures degrade after thermal transport delay",
+    "When pump proof returns, flow recovers first and chiller proof follows only after the normal startup delay"
+  ],
+  "completion_criteria": [
+    "Student traces the comfort complaint from zone to VAV, AHU valve, common flow, pump proof, and chiller proof",
+    "Student distinguishes a parent availability failure from a stuck child valve or biased zone sensor"
+  ],
+  "instructor_notes": "Keep the fault hidden until the student has established scope from WebCTRL. This scenario uses a forced-false proof that physically inhibits pump flow and compressor capacity; it is not a false-status-only fault.",
+  "student_objectives": ["Trace a child symptom to a parent plant failure", "Use command, proof, flow, and thermal consequence together"],
+  "difficulty": "advanced",
+  "recommended_speed": 10,
+  "observation_points": [
+    "ACI-SIM-CHILLER-1.chw_pump_ss",
+    "ACI-SIM-CHILLER-1.chw_pump_status",
+    "ACI-SIM-CHILLER-1.chiller_status",
+    "ACI-SIM-CHW-PLANT.chws_flow_common",
+    "ACI-SIM-CHW-PLANT.chws_temp_common",
+    "ACI-SIM-CHW-PLANT.chwr_temp_common",
+    "ACI-SIM-AHU-1.cooling_valve",
+    "ACI-SIM-AHU-1.ahu_sa_temp",
+    "ACI-SIM-VAV-3.discharge_temp",
+    "ACI-SIM-VAV-3.zone_temp"
+  ],
+  "prerequisites": ["Parent-child availability", "Pump command versus proof", "Thermal transport delay"],
+  "tags": ["chilled-water", "pump", "proof", "comfort-complaint", "blinded", "parent-child"]
+}
