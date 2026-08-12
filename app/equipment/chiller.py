@@ -33,6 +33,8 @@ class ChillerParameters:
     maximum_chws_setpoint_f: float = 54.0
     chws_time_constant_seconds: float = 45.0
     compressor_loading_time_constant_seconds: float = 30.0
+    minimum_run_seconds: float = 180.0
+    minimum_off_seconds: float = 300.0
     chwr_rise_when_loaded_f: float = 10.0
     design_chw_flow_gpm: float = 300.0
     idle_evaporator_temp_f: float = 70.0
@@ -52,6 +54,16 @@ class ChillerParameters:
     compressor_heat_rejection_ratio: float = 0.22
     standalone_condenser_load_fraction: float = 0.50
 
+    def __post_init__(self) -> None:
+        for name in (
+            "start_delay_seconds",
+            "minimum_run_seconds",
+            "minimum_off_seconds",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, (int, float)) or value < 0.0:
+                raise ValueError(f"{name} must be a non-negative number")
+
 
 class ChillerModel(EquipmentModel):
     def __init__(
@@ -69,6 +81,14 @@ class ChillerModel(EquipmentModel):
 
         self._enabled_seconds = 0.0
         self._proven = False
+        self._run_seconds = 0.0
+        # Allow the first start after construction; subsequent stops must
+        # satisfy the configured anti-recycle timer.
+        self._off_seconds = self.params.minimum_off_seconds
+        self._start_count = 0
+        self._anti_recycle_active = False
+        self._minimum_run_hold_active = False
+        self._operating_state = 0
         self._chws_temp = self.params.idle_evaporator_temp_f
         self._chwr_temp = self.params.idle_evaporator_temp_f
         self._evaporator_inlet_temp_f = self.params.idle_evaporator_temp_f
@@ -254,15 +274,76 @@ class ChillerModel(EquipmentModel):
         if manager_reset and self._cwr_temp <= self.params.high_head_reset_f:
             self._safety_lockout = False
         physical_proof_failure = self._forced_off("chiller_status")
-        if run_command and flow_proven and not self._safety_lockout and not physical_proof_failure:
-            self._enabled_seconds += dt_seconds
-        else:
-            self._enabled_seconds = 0.0
-        self._proven = (
-            run_command and flow_proven and not self._safety_lockout
-            and not physical_proof_failure
-            and self._enabled_seconds >= self.params.start_delay_seconds
+        was_proven = self._proven
+        hard_stop = (
+            remote_shutdown
+            or emerg_trip
+            or refrig_trip
+            or not flow_proven
+            or self._safety_lockout
+            or physical_proof_failure
         )
+        self._anti_recycle_active = False
+        self._minimum_run_hold_active = False
+
+        if was_proven:
+            if hard_stop:
+                self._proven = False
+            elif run_command:
+                self._proven = True
+            elif self._run_seconds < self.params.minimum_run_seconds:
+                # A normal stop request can be held, but every safety and
+                # water-flow interlock remains dominant and stops at once.
+                self._proven = True
+                self._minimum_run_hold_active = True
+            else:
+                self._proven = False
+
+            if self._proven:
+                self._run_seconds += dt_seconds
+                self._off_seconds = 0.0
+                self._enabled_seconds = max(
+                    self._enabled_seconds, self.params.start_delay_seconds
+                )
+            else:
+                self._run_seconds = 0.0
+                self._off_seconds = 0.0
+                self._enabled_seconds = 0.0
+        else:
+            self._run_seconds = 0.0
+            self._off_seconds = min(
+                self.params.minimum_off_seconds,
+                self._off_seconds + dt_seconds,
+            )
+            start_permissive = not hard_stop
+            off_timer_satisfied = self._off_seconds >= self.params.minimum_off_seconds
+            if run_command and start_permissive and not off_timer_satisfied:
+                self._anti_recycle_active = True
+                self._enabled_seconds = 0.0
+            elif run_command and start_permissive:
+                self._enabled_seconds += dt_seconds
+                if self._enabled_seconds >= self.params.start_delay_seconds:
+                    self._proven = True
+                    self._start_count += 1
+                    self._run_seconds = dt_seconds
+                    self._off_seconds = 0.0
+            else:
+                self._enabled_seconds = 0.0
+
+        if self._safety_lockout or emerg_trip or refrig_trip:
+            self._operating_state = 5  # safety lockout / hard interlock
+        elif self._proven and self._minimum_run_hold_active:
+            self._operating_state = 4  # minimum-run hold
+        elif self._proven:
+            self._operating_state = 3  # running
+        elif self._anti_recycle_active:
+            self._operating_state = 1  # minimum-off / anti-recycle
+        elif run_command and not hard_stop and self._enabled_seconds > 0.0:
+            self._operating_state = 2  # starting / proof delay
+        elif run_command and hard_stop:
+            self._operating_state = 6  # waiting for a physical permissive
+        else:
+            self._operating_state = 0  # off
 
         setpoint = (
             chws_reset
@@ -443,5 +524,27 @@ class ChillerModel(EquipmentModel):
         self.registry.set("cwr_temp", self._cwr_temp)
         self.registry.set("cws_temp", self._cws_temp)
         self.registry.set("cws_basin_temp", self._basin_temp)
+
+        aliases = set(self.registry.all_points())
+        controller_telemetry = {
+            "operating_state": float(self._operating_state),
+            "start_count": float(self._start_count),
+            "minimum_run_remaining": (
+                max(0.0, self.params.minimum_run_seconds - self._run_seconds)
+                if self._proven else 0.0
+            ),
+            "minimum_off_remaining": (
+                self.params.minimum_off_seconds
+                if self._proven
+                else max(0.0, self.params.minimum_off_seconds - self._off_seconds)
+            ),
+            "compressor_capacity": 100.0 * self._compressor_capacity_fraction,
+            "anti_recycle_active": 1.0 if self._anti_recycle_active else 0.0,
+            "minimum_run_hold_active": 1.0 if self._minimum_run_hold_active else 0.0,
+            "safety_lockout": 1.0 if self._safety_lockout else 0.0,
+        }
+        for alias, value in controller_telemetry.items():
+            if alias in aliases:
+                self.registry.set(alias, value)
 
         self.runtime_seconds += dt_seconds

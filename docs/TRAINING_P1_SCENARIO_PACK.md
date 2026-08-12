@@ -71,7 +71,7 @@ criteria need corresponding physical state and observable evidence.
 - Six scenario files validate against the deployed 355-point catalog.
 - Every P1 outcome passes against the real equipment graph.
 - Focused scenario/training tests pass.
-- Full suite target: 199 passing tests.
+- Historical P1 full-suite target: 199 passing tests.
 - Production application-factory acceptance loaded 28 equipment groups, 355
   BACnet objects, six baselines, and all 16 scenarios. Neutral restore settled
   and all six P1 preflights returned no blockers.
@@ -79,3 +79,11 @@ criteria need corresponding physical state and observable evidence.
   10x with a 100 percent score. All three assertions passed, 500 one-second
   samples were persisted, the shoulder checkpoint restored at 1x, and BACnet
   ended with zero blocked messages and zero COV notification failures.
+
+## Post-P1 plant timing addendum
+
+The next-pack minimum run/off and anti-recycle work is implemented in the
+checkout, adding 45 points and two graded scenarios. Lead/lag staging, energy
+telemetry, and the remaining plant depth stay in the backlog. See
+[`PLANT_CONTROLLER_TIMING.md`](PLANT_CONTROLLER_TIMING.md). This addendum does
+not alter the historical 355-point / 16-scenario P1 live-acceptance record.

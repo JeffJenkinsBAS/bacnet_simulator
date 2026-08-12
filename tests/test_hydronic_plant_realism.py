@@ -163,6 +163,7 @@ async def test_high_head_latches_until_cooled_and_manager_reset() -> None:
             high_head_trip_f=84.0,
             high_head_reset_f=75.0,
             tower_time_constant_seconds=3.0,
+            minimum_off_seconds=120.0,
         )
     )
     await _command_chiller(registry, tower=False)

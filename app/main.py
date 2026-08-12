@@ -39,8 +39,8 @@ from app.config_models import EquipmentGroupConfig, NetworkConfig, SupervisoryDe
 from app.diagnostics import CommandCenterDiagnostics
 from app.engine import SimulationEngine
 from app.equipment.ahu import AhuModel, AhuParameters
-from app.equipment.boiler import BoilerModel
-from app.equipment.chiller import ChillerModel
+from app.equipment.boiler import BoilerModel, BoilerParameters
+from app.equipment.chiller import ChillerModel, ChillerParameters
 from app.equipment.exhaust_fan import ExhaustFanModel
 from app.equipment.managers import BoilerManagerModel, ChwPlantManagerModel
 from app.equipment.site import SiteModel
@@ -144,6 +144,17 @@ def build_equipment(registry: PointRegistry, fault_manager: FaultManager) -> lis
     (scoped to that model's own group_id, and now also fault-aware) plus
     whatever cross-group references it needs.
     """
+    group_configs = {group.group_id: group for group in registry.groups}
+
+    def configured_parameters(group_id: str, parameter_type, label: str):
+        configured = group_configs[group_id].model_parameters
+        try:
+            return parameter_type(**configured)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{group_id} contains invalid {label} model_parameters: {exc}"
+            ) from exc
+
     site_view = registry.view("ACI-SIM-SITE", fault_manager=fault_manager)
     site = SiteModel("ACI-SIM-SITE", site_view)
 
@@ -154,6 +165,9 @@ def build_equipment(registry: PointRegistry, fault_manager: FaultManager) -> lis
             ChillerModel(
                 f"ACI-SIM-CHILLER-{n}", registry.view(f"ACI-SIM-CHILLER-{n}", fault_manager=fault_manager),
                 site_registry=site_view, plant_registry=plant_view,
+                parameters=configured_parameters(
+                    f"ACI-SIM-CHILLER-{n}", ChillerParameters, "chiller"
+                ),
             )
         )
     boiler_mgr_view = registry.view("ACI-SIM-BOILER-MGR", fault_manager=fault_manager)
@@ -162,6 +176,9 @@ def build_equipment(registry: PointRegistry, fault_manager: FaultManager) -> lis
         boilers.append(
             BoilerModel(
                 f"ACI-SIM-BOILER-{n}", registry.view(f"ACI-SIM-BOILER-{n}", fault_manager=fault_manager),
+                parameters=configured_parameters(
+                    f"ACI-SIM-BOILER-{n}", BoilerParameters, "boiler"
+                ),
                 manager_registry=boiler_mgr_view, manager_enable_alias=f"enable_boiler{n}",
             )
         )
@@ -199,8 +216,6 @@ def build_equipment(registry: PointRegistry, fault_manager: FaultManager) -> lis
     )
 
     vavs = []
-    group_configs = {group.group_id: group for group in registry.groups}
-
     def vav_parameters(group_id: str) -> VavParameters:
         configured = group_configs[group_id].model_parameters
         try:

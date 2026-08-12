@@ -72,13 +72,16 @@ def bi(alias, inst, name, desc, direction="sim_to_webctrl", alarm=False, initial
     }
 
 
-def bo(alias, inst, name, desc, initial=0):
-    return {
+def bo(alias, inst, name, desc, initial=0, relinquish=None):
+    point = {
         "alias": alias, "object_type": "binary-output", "object_instance": inst,
         "object_name": name, "description": desc, "units": "no-units",
         "signal_direction": "webctrl_to_sim", "writable": True, "commandable": True,
         "initial_value": initial, "update_interval_seconds": 1,
     }
+    if relinquish is not None:
+        point["relinquish_default"] = relinquish
+    return point
 
 
 def bv_interlock(alias, inst, name, desc, initial=0):
@@ -161,7 +164,7 @@ write_group("ACI-SIM-CHW-PLANT", 1, "Chiller Manager's plant-level status/common
 # ------------------------------------------------------------- CHILLERS --
 for n, ordinal in ((1, 2), (2, 3), (3, 4)):
     write_group(f"ACI-SIM-CHILLER-{n}", ordinal, f"Simulated chiller {n} unit, condenser water, and cooling tower.", [
-        bo("chiller_enable", 60, "Chiller Enable", f"Chiller {n} enable command"),
+        bo("chiller_enable", 60, "Chiller Enable", f"Chiller {n} enable command", initial=1, relinquish=1),
         bo("chiller_ss", 61, "Chiller S/S", f"Chiller {n} start/stop command"),
         bi("chiller_status", 40, "Chiller Status", f"Chiller {n} run status (own address, separate from plant-level OK)"),
         ao("byp_vlv_output", 20, "Byp Vlv Output", f"Chiller {n} bypass valve position command"),
@@ -188,13 +191,46 @@ for n, ordinal in ((1, 2), (2, 3), (3, 4)):
         ai("cws_temp", 5, "CWS Temp", f"Chiller {n} condenser-water-supply temperature",
            initial=75.0, minimum=40.0, maximum=110.0),
         bo("manager_reset", 66, "Manager Reset", f"Chiller {n} alarm/lockout reset pulse"),
-    ])
+        av("operating_state", 80, "Operating State", "Numeric local-controller state: 0 off, 1 anti-recycle, 2 starting, 3 running, 4 minimum-run hold, 5 safety lockout, 6 waiting for permissive",
+           units="no-units", initial=0.0, minimum=0.0, maximum=6.0, cov=1.0),
+        av("start_count", 81, "Start Count", f"Chiller {n} successful compressor starts since simulator restart or checkpoint",
+           units="no-units", initial=0.0, minimum=0.0, maximum=1000000.0, cov=1.0),
+        av("minimum_run_remaining", 82, "Minimum Run Remaining", f"Chiller {n} local minimum-run time remaining",
+           units="seconds", initial=0.0, minimum=0.0, maximum=3600.0, cov=1.0),
+        av("minimum_off_remaining", 83, "Minimum Off Remaining", f"Chiller {n} anti-recycle time remaining before another compressor start",
+           units="seconds", initial=0.0, minimum=0.0, maximum=3600.0, cov=1.0),
+        av("compressor_capacity", 84, "Compressor Capacity", f"Chiller {n} effective compressor capacity feedback",
+           units="percent", initial=0.0, minimum=0.0, maximum=100.0, cov=1.0),
+        bi("anti_recycle_active", 46, "Anti-Recycle Active", f"Chiller {n} start is blocked by the minimum-off timer"),
+        bi("minimum_run_hold_active", 47, "Minimum Run Hold Active", f"Chiller {n} remains enabled to satisfy local minimum-run protection"),
+        bi("safety_lockout", 48, "Safety Lockout", f"Chiller {n} local high-head or hard-safety lockout", alarm=True),
+    ], model_parameters={
+        "start_delay_seconds": 45.0,
+        "minimum_run_seconds": 180.0,
+        "minimum_off_seconds": 300.0,
+    })
 
 # ---------------------------------------------------------- BOILER-MGR --
 write_group("ACI-SIM-BOILER-MGR", 5, "Boiler Manager's plant-level status/enable points.", [
     bi("boiler1_ok", 40, "Boiler 1 OK", "Plant-level mirror of Boiler-1's own status (separate address per Jeff's correction)"),
     bi("boiler2_ok", 41, "Boiler 2 OK", "Plant-level mirror of Boiler-2's own status"),
     bi("boiler3_ok", 42, "Boiler 3 OK", "Plant-level mirror of Boiler-3's own status"),
+    ai("hwr_temp_common", 1, "HWR Temp", "Common hot-water-return header temperature",
+       initial=100.0, minimum=40.0, maximum=220.0),
+    ai("hws_flow_common", 2, "HWS Flow", "Common hot-water distribution flow",
+       units="gallons-per-minute", initial=0.0, minimum=0.0, maximum=250.0, cov=1.0),
+    ai("hws_temp_common", 3, "HWS Temp", "Common hot-water-supply header temperature",
+       initial=100.0, minimum=40.0, maximum=220.0),
+    ai("hw_diff_pressure", 4, "HW Differential Pressure", "Modeled distribution-loop differential pressure",
+       units="pounds-force-per-square-inch", initial=0.0, minimum=0.0, maximum=20.0, cov=0.1),
+    ai("hw_loop_load", 5, "HW Loop Load", "Total AHU and VAV heat removed from the hot-water loop",
+       units="btus-per-hour", initial=0.0, minimum=0.0, maximum=2000000.0, cov=1000.0),
+    ai("boiler_heat_output", 6, "Boiler Heat Output", "Combined useful boiler heat delivered to the loop",
+       units="btus-per-hour", initial=0.0, minimum=0.0, maximum=2000000.0, cov=1000.0),
+    ai("hw_pump_heat", 7, "HW Pump Heat", "Distribution and boiler-circulator pump heat added to the loop",
+       units="btus-per-hour", initial=0.0, minimum=0.0, maximum=100000.0, cov=100.0),
+    ai("hw_pump_speed_common", 8, "HW Pump Speed", "Common fixed-speed distribution-pump feedback; 100 percent when any pump is proven",
+       units="percent", initial=0.0, minimum=0.0, maximum=100.0, cov=1.0),
     bo("enable_boiler1", 60, "Enable Boiler1", "Boiler 1 enable command"),
     bo("enable_boiler2", 61, "Enable Boiler2", "Boiler 2 enable command"),
     bo("enable_boiler3", 62, "Enable Boiler3", "Boiler 3 enable command"),
@@ -204,12 +240,38 @@ write_group("ACI-SIM-BOILER-MGR", 5, "Boiler Manager's plant-level status/enable
 for n, ordinal in ((1, 6), (2, 7), (3, 8)):
     write_group(f"ACI-SIM-BOILER-{n}", ordinal, f"Simulated boiler {n} unit.", [
         bi("boiler_ok", 40, "Boiler OK", f"Boiler {n} run status (own address, separate from Mgr-level)"),
+        ai("hwr_temp", 1, "HWR Temp", f"Boiler {n} entering hot-water temperature",
+           initial=100.0, minimum=40.0, maximum=220.0),
+        ai("hws_temp", 2, "HWS Temp", f"Boiler {n} leaving hot-water temperature",
+           initial=100.0, minimum=40.0, maximum=220.0),
+        ai("boiler_flow", 3, "HW Flow", f"Boiler {n} branch hot-water flow",
+           units="gallons-per-minute", initial=0.0, minimum=0.0, maximum=100.0),
+        ai("firing_rate", 4, "Firing Rate", f"Boiler {n} modulating firing-rate feedback",
+           units="percent", initial=0.0, minimum=0.0, maximum=100.0, cov=1.0),
+        bi("circ_pump_status", 41, "Circ Pump Status", f"Boiler {n} circulator pump proof"),
+        bi("hw_pump_status", 42, "HW Pump Status", f"Boiler {n} distribution pump proof"),
         bo("boiler_ss", 60, "Boiler S/S", f"Boiler {n} start/stop command"),
         bo("circ_pump_ss", 61, "Circ Pump S/S", f"Boiler {n} circulator pump start/stop command"),
         bo("hw_pump_ss", 62, "HW Pump S/S", f"Boiler {n} hot water pump start/stop command"),
         ao("hws_stpt_reset", 20, "HWS Stpt Reset", f"Boiler {n} hot-water-supply setpoint reset",
            units="degrees-fahrenheit", minimum=100.0, maximum=200.0, initial=180.0, relinquish=180.0),
-    ])
+        av("operating_state", 80, "Operating State", "Numeric local-controller state: 0 off, 1 anti-recycle, 2 purge/ignition, 3 running, 4 minimum-run hold, 6 waiting for permissive",
+           units="no-units", initial=0.0, minimum=0.0, maximum=6.0, cov=1.0),
+        av("start_count", 81, "Start Count", f"Boiler {n} successful burner starts since simulator restart or checkpoint",
+           units="no-units", initial=0.0, minimum=0.0, maximum=1000000.0, cov=1.0),
+        av("minimum_run_remaining", 82, "Minimum Run Remaining", f"Boiler {n} local minimum-run time remaining",
+           units="seconds", initial=0.0, minimum=0.0, maximum=3600.0, cov=1.0),
+        av("minimum_off_remaining", 83, "Minimum Off Remaining", f"Boiler {n} anti-cycle time remaining before another burner start",
+           units="seconds", initial=0.0, minimum=0.0, maximum=3600.0, cov=1.0),
+        bi("anti_recycle_active", 43, "Anti-Recycle Active", f"Boiler {n} start is blocked by the minimum-off timer"),
+        bi("minimum_run_hold_active", 44, "Minimum Run Hold Active", f"Boiler {n} remains enabled to satisfy local minimum-run protection"),
+        bi("start_permissive", 45, "Start Permissive", f"Boiler {n} circulator and physical proof chain permit a start"),
+    ], model_parameters={
+        "purge_seconds": 30.0,
+        "ignition_seconds": 5.0,
+        "minimum_run_seconds": 120.0,
+        "minimum_off_seconds": 60.0,
+    })
 
 # ----------------------------------------------------------------- AHU --
 write_group("ACI-SIM-AHU-1", 9, "Simulated AHU valves/dampers/fans, sensors, and hard interlocks (High Static Pressure, Freezestat).", [

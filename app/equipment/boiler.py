@@ -29,6 +29,8 @@ class BoilerParameters:
     # OEM/site-specific values remain parameter overrides.
     purge_seconds: float = 30.0
     ignition_seconds: float = 5.0
+    minimum_run_seconds: float = 120.0
+    minimum_off_seconds: float = 60.0
     hws_setpoint_f: float = 180.0
     hws_time_constant_seconds: float = 12.0
     pump_start_delay_seconds: float = 3.0
@@ -40,6 +42,17 @@ class BoilerParameters:
     firing_deadband_f: float = 1.0
     maximum_leaving_temp_above_setpoint_f: float = 5.0
     standby_temp_f: float = 100.0
+
+    def __post_init__(self) -> None:
+        for name in (
+            "purge_seconds",
+            "ignition_seconds",
+            "minimum_run_seconds",
+            "minimum_off_seconds",
+        ):
+            value = getattr(self, name)
+            if not isinstance(value, (int, float)) or value < 0.0:
+                raise ValueError(f"{name} must be a non-negative number")
 
 
 class BoilerModel(EquipmentModel):
@@ -62,6 +75,13 @@ class BoilerModel(EquipmentModel):
 
         self._enabled_seconds = 0.0
         self._proven = False
+        self._run_seconds = 0.0
+        self._off_seconds = self.params.minimum_off_seconds
+        self._start_count = 0
+        self._anti_recycle_active = False
+        self._minimum_run_hold_active = False
+        self._start_permissive = False
+        self._operating_state = 0
         self._hws_temp = self.params.standby_temp_f
         self._hwr_temp = self.params.standby_temp_f
         self._hydronic_flow_gpm = 0.0
@@ -127,13 +147,18 @@ class BoilerModel(EquipmentModel):
         ss = unit_ss
         if self.manager_registry is not None and self.manager_enable_alias is not None:
             ss = ss or (self.manager_registry.get_commanded(self.manager_enable_alias) == 1.0)
+        requested_ss = ss
         # A stuck-false unit start input represents a failed local permissive
         # or ignition chain. The manager enable cannot bypass that physical
         # fault merely because it is another logical source of the request.
         stuck_start = self.registry.point_fault_parameters(
             "boiler_ss", FaultType.stuck_value
         )
-        if stuck_start is not None and not bool(stuck_start.get("value", unit_ss)):
+        start_chain_failed = (
+            stuck_start is not None
+            and not bool(stuck_start.get("value", unit_ss))
+        )
+        if start_chain_failed:
             ss = False
         circ_pump_cmd = self.registry.get_commanded("circ_pump_ss") == 1.0
         hw_pump_cmd = self.registry.get_commanded("hw_pump_ss") == 1.0
@@ -158,15 +183,72 @@ class BoilerModel(EquipmentModel):
         # boilers lock out on low-water/no-flow); losing the pump mid-run
         # drops proof and restarts the purge+ignition sequence.
         physical_proof_failure = self._forced_off("boiler_ok")
-        if ss and self._circ_pump_running and not physical_proof_failure:
-            self._enabled_seconds += dt_seconds
-        else:
-            self._enabled_seconds = 0.0
-        self._proven = (
-            ss and self._circ_pump_running
-            and self._enabled_seconds >= (self.params.purge_seconds + self.params.ignition_seconds)
+        was_proven = self._proven
+        self._start_permissive = (
+            self._circ_pump_running
             and not physical_proof_failure
+            and not start_chain_failed
         )
+        hard_stop = not self._start_permissive
+        self._anti_recycle_active = False
+        self._minimum_run_hold_active = False
+
+        if was_proven:
+            if hard_stop:
+                self._proven = False
+            elif ss:
+                self._proven = True
+            elif self._run_seconds < self.params.minimum_run_seconds:
+                self._proven = True
+                self._minimum_run_hold_active = True
+            else:
+                self._proven = False
+
+            if self._proven:
+                self._run_seconds += dt_seconds
+                self._off_seconds = 0.0
+                self._enabled_seconds = max(
+                    self._enabled_seconds,
+                    self.params.purge_seconds + self.params.ignition_seconds,
+                )
+            else:
+                self._run_seconds = 0.0
+                self._off_seconds = 0.0
+                self._enabled_seconds = 0.0
+        else:
+            self._run_seconds = 0.0
+            self._off_seconds = min(
+                self.params.minimum_off_seconds,
+                self._off_seconds + dt_seconds,
+            )
+            off_timer_satisfied = self._off_seconds >= self.params.minimum_off_seconds
+            if ss and self._start_permissive and not off_timer_satisfied:
+                self._anti_recycle_active = True
+                self._enabled_seconds = 0.0
+            elif ss and self._start_permissive:
+                self._enabled_seconds += dt_seconds
+                if self._enabled_seconds >= (
+                    self.params.purge_seconds + self.params.ignition_seconds
+                ):
+                    self._proven = True
+                    self._start_count += 1
+                    self._run_seconds = dt_seconds
+                    self._off_seconds = 0.0
+            else:
+                self._enabled_seconds = 0.0
+
+        if self._proven and self._minimum_run_hold_active:
+            self._operating_state = 4
+        elif self._proven:
+            self._operating_state = 3
+        elif self._anti_recycle_active:
+            self._operating_state = 1
+        elif ss and self._start_permissive and self._enabled_seconds > 0.0:
+            self._operating_state = 2
+        elif requested_ss and not self._start_permissive:
+            self._operating_state = 6
+        else:
+            self._operating_state = 0
 
         setpoint = (
             hws_reset
@@ -251,6 +333,20 @@ class BoilerModel(EquipmentModel):
             "firing_rate": self.firing_rate_pct,
             "circ_pump_status": 1.0 if self._circ_pump_running else 0.0,
             "hw_pump_status": 1.0 if self._hw_pump_running else 0.0,
+            "operating_state": float(self._operating_state),
+            "start_count": float(self._start_count),
+            "minimum_run_remaining": (
+                max(0.0, self.params.minimum_run_seconds - self._run_seconds)
+                if self._proven else 0.0
+            ),
+            "minimum_off_remaining": (
+                self.params.minimum_off_seconds
+                if self._proven
+                else max(0.0, self.params.minimum_off_seconds - self._off_seconds)
+            ),
+            "anti_recycle_active": 1.0 if self._anti_recycle_active else 0.0,
+            "minimum_run_hold_active": 1.0 if self._minimum_run_hold_active else 0.0,
+            "start_permissive": 1.0 if self._start_permissive else 0.0,
         }
         for alias, value in telemetry.items():
             if alias in aliases:
@@ -269,4 +365,20 @@ class BoilerModel(EquipmentModel):
             "firing_rate_pct": round(self.firing_rate_pct, 2),
             "heat_output_btuh": round(self.heat_output_btuh, 1),
             "setpoint_f": round(self.active_setpoint_f, 2),
+            "operating_state": self._operating_state,
+            "start_count": self._start_count,
+            "minimum_run_remaining_seconds": round(
+                max(0.0, self.params.minimum_run_seconds - self._run_seconds)
+                if self._proven else 0.0,
+                1,
+            ),
+            "minimum_off_remaining_seconds": round(
+                self.params.minimum_off_seconds
+                if self._proven
+                else max(0.0, self.params.minimum_off_seconds - self._off_seconds),
+                1,
+            ),
+            "anti_recycle_active": self._anti_recycle_active,
+            "minimum_run_hold_active": self._minimum_run_hold_active,
+            "start_permissive": self._start_permissive,
         }

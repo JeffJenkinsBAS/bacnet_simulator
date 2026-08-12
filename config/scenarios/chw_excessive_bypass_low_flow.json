@@ -21,12 +21,12 @@
     { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "damper_position_command", "value": 100, "description": "Open VAV-3" },
     { "time_seconds": 180, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "byp_vlv_output", "value": 80, "description": "Divert most primary flow around the evaporator" },
     { "time_seconds": 360, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "byp_vlv_output", "value": 0, "description": "Close bypass and restore evaporator flow" },
-    { "time_seconds": 540, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 0, "description": "Remove load after recovery" }
+    { "time_seconds": 600, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 0, "description": "Remove load after anti-recycle and proof recovery" }
   ],
   "expected_results": [
     "Chiller proof establishes after normal flow and startup delay",
     "Opening the bypass leaves common CHW flow visible but reduces barrel flow below the chiller permit and drops proof/capacity",
-    "Closing the bypass restores evaporator flow; proof returns only after the normal startup delay",
+    "Closing the bypass restores evaporator flow; the local anti-recycle timer must finish before the normal startup/proof delay begins",
     "Students must not treat common-header GPM alone as proof of evaporator flow"
   ],
   "completion_criteria": [
@@ -41,12 +41,15 @@
     "ACI-SIM-CHILLER-1.byp_vlv_output",
     "ACI-SIM-CHILLER-1.chw_pump_status",
     "ACI-SIM-CHILLER-1.chiller_status",
+    "ACI-SIM-CHILLER-1.operating_state",
+    "ACI-SIM-CHILLER-1.anti_recycle_active",
+    "ACI-SIM-CHILLER-1.minimum_off_remaining",
     "ACI-SIM-CHW-PLANT.chws_flow_common",
     "ACI-SIM-CHW-PLANT.chws_temp_common",
     "ACI-SIM-CHW-PLANT.chwr_temp_common",
     "ACI-SIM-AHU-1.cooling_valve",
     "ACI-SIM-AHU-1.ahu_sa_temp"
   ],
-  "prerequisites": ["Primary bypass topology", "Evaporator minimum flow", "Chiller proof timing"],
+  "prerequisites": ["Primary bypass topology", "Evaporator minimum flow", "Chiller proof and anti-recycle timing"],
   "tags": ["chilled-water", "bypass", "low-flow", "chiller", "diagnostics"]
 }

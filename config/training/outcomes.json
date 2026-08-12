@@ -36,7 +36,8 @@
       {"assertion_id": "chiller_proves_before_bypass", "title": "Chiller proves with full evaporator flow", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 60, "end_seconds": 170, "for_seconds": 20, "weight": 1},
       {"assertion_id": "common_flow_remains", "title": "Common CHW flow remains despite bypass", "point": "ACI-SIM-CHW-PLANT.chws_flow_common", "operator": "gt", "value": 250, "start_seconds": 220, "end_seconds": 340, "for_seconds": 30, "weight": 2},
       {"assertion_id": "bypass_drops_chiller_proof", "title": "Low barrel flow drops chiller proof", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": false, "start_seconds": 220, "end_seconds": 340, "for_seconds": 30, "weight": 2},
-      {"assertion_id": "chiller_reproves_after_close", "title": "Chiller reproves after bypass closes", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 430, "end_seconds": 530, "for_seconds": 20, "weight": 2}
+      {"assertion_id": "anti_recycle_visible_after_flow_returns", "title": "Anti-recycle blocks an immediate restart after flow returns", "point": "ACI-SIM-CHILLER-1.anti_recycle_active", "operator": "eq", "value": true, "start_seconds": 370, "end_seconds": 470, "for_seconds": 20, "weight": 1},
+      {"assertion_id": "chiller_reproves_after_close", "title": "Chiller reproves after minimum-off and startup timing", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 520, "end_seconds": 590, "for_seconds": 20, "weight": 2}
     ],
     "chw_pump_proof_loss_comfort_complaint": [
       {"assertion_id": "normal_cooling_chain_proves", "title": "Normal chiller proof establishes before the fault", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 60, "end_seconds": 170, "for_seconds": 20, "weight": 1},
@@ -46,7 +47,8 @@
       {"assertion_id": "child_valve_request_persists", "title": "AHU cooling request persists without parent flow", "point": "ACI-SIM-AHU-1.cooling_valve", "operator": "gt", "value": 70, "start_seconds": 220, "end_seconds": 340, "for_seconds": 30, "weight": 1},
       {"assertion_id": "supply_air_warms", "title": "AHU supply air warms after parent loss", "point": "ACI-SIM-AHU-1.ahu_sa_temp", "operator": "gt", "value": 74, "start_seconds": 260, "end_seconds": 350, "for_seconds": 30, "weight": 2},
       {"assertion_id": "pump_proof_recovers", "title": "CHW pump proof recovers first", "point": "ACI-SIM-CHILLER-1.chw_pump_status", "operator": "eq", "value": true, "start_seconds": 380, "end_seconds": 520, "for_seconds": 20, "weight": 1},
-      {"assertion_id": "chiller_reproves", "title": "Chiller reproves after startup delay", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 430, "end_seconds": 520, "for_seconds": 20, "weight": 2}
+      {"assertion_id": "anti_recycle_visible_after_pump_repair", "title": "Anti-recycle remains visible after pump proof returns", "point": "ACI-SIM-CHILLER-1.anti_recycle_active", "operator": "eq", "value": true, "start_seconds": 370, "end_seconds": 470, "for_seconds": 20, "weight": 1},
+      {"assertion_id": "chiller_reproves", "title": "Chiller reproves after minimum-off and startup timing", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 520, "end_seconds": 590, "for_seconds": 20, "weight": 2}
     ],
     "economizer_damper_stuck": [
       {"assertion_id": "full_economizer_requested", "title": "Full economizer remains requested", "point": "ACI-SIM-AHU-1.economizer", "operator": "eq", "value": 100, "start_seconds": 80, "end_seconds": 220, "for_seconds": 30, "weight": 1},
@@ -61,6 +63,21 @@
     "hot_water_reheat_load_response": [
       {"assertion_id": "hws_above_hwr", "title": "Loaded HWS exceeds HWR", "point": "ACI-SIM-BOILER-MGR.hws_temp_common", "operator": "gt", "other_point": "ACI-SIM-BOILER-MGR.hwr_temp_common", "offset": 0.2, "start_seconds": 150, "end_seconds": 420, "for_seconds": 30, "weight": 2},
       {"assertion_id": "hw_flow_proven", "title": "Secondary HW flow responds", "point": "ACI-SIM-BOILER-MGR.hws_flow_common", "operator": "gt", "value": 0.1, "start_seconds": 120, "end_seconds": 420, "for_seconds": 20, "weight": 1}
+    ],
+    "chiller_anti_recycle_timing": [
+      {"assertion_id": "first_chiller_start_proves", "title": "First compressor start proves", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 55, "end_seconds": 85, "for_seconds": 15, "weight": 1},
+      {"assertion_id": "chiller_minimum_run_hold_visible", "title": "Early stop request produces a visible minimum-run hold", "point": "ACI-SIM-CHILLER-1.minimum_run_hold_active", "operator": "eq", "value": true, "start_seconds": 100, "end_seconds": 210, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "chiller_anti_recycle_visible", "title": "Immediate restart request is blocked by anti-recycle", "point": "ACI-SIM-CHILLER-1.anti_recycle_active", "operator": "eq", "value": true, "start_seconds": 250, "end_seconds": 500, "for_seconds": 60, "weight": 2},
+      {"assertion_id": "second_chiller_start_proves", "title": "Second start proves after minimum-off and startup timing", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 570, "end_seconds": 620, "for_seconds": 20, "weight": 2},
+      {"assertion_id": "chiller_start_counter_reaches_two", "title": "Chiller start counter records both starts", "point": "ACI-SIM-CHILLER-1.start_count", "operator": "ge", "value": 2, "start_seconds": 570, "end_seconds": 620, "for_seconds": 20, "weight": 1}
+    ],
+    "boiler_anti_cycle_timing": [
+      {"assertion_id": "boiler_start_permissive_proves", "title": "Boiler start permissive establishes", "point": "ACI-SIM-BOILER-1.start_permissive", "operator": "eq", "value": true, "start_seconds": 5, "end_seconds": 55, "for_seconds": 20, "weight": 1},
+      {"assertion_id": "first_boiler_start_proves", "title": "First purge and ignition sequence proves", "point": "ACI-SIM-BOILER-1.boiler_ok", "operator": "eq", "value": true, "start_seconds": 40, "end_seconds": 55, "for_seconds": 10, "weight": 1},
+      {"assertion_id": "boiler_minimum_run_hold_visible", "title": "Early stop request produces a visible minimum-run hold", "point": "ACI-SIM-BOILER-1.minimum_run_hold_active", "operator": "eq", "value": true, "start_seconds": 70, "end_seconds": 145, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "boiler_anti_cycle_visible", "title": "Immediate restart request is blocked by anti-cycle", "point": "ACI-SIM-BOILER-1.anti_recycle_active", "operator": "eq", "value": true, "start_seconds": 185, "end_seconds": 210, "for_seconds": 15, "weight": 2},
+      {"assertion_id": "second_boiler_start_proves", "title": "Second purge and ignition sequence proves", "point": "ACI-SIM-BOILER-1.boiler_ok", "operator": "eq", "value": true, "start_seconds": 255, "end_seconds": 320, "for_seconds": 20, "weight": 2},
+      {"assertion_id": "boiler_start_counter_reaches_two", "title": "Boiler start counter records both starts", "point": "ACI-SIM-BOILER-1.start_count", "operator": "ge", "value": 2, "start_seconds": 255, "end_seconds": 320, "for_seconds": 20, "weight": 1}
     ],
     "simulator_comm_loss": [
       {"assertion_id": "communications_recover", "title": "Device communications recover", "point": "ACI-SIM-SITE.oa_temp", "operator": "ge", "value": -50, "start_seconds": 150, "end_seconds": 210, "for_seconds": 5, "weight": 1}

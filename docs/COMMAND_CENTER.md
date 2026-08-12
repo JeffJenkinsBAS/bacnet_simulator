@@ -29,12 +29,13 @@ All simulated points remain under the single BACnet supervisory device
 | AHU | 1 | Supply-air, fan, economizer, coil, and interlock behavior |
 | Exhaust fan | 1 | Enable, proof, VFD command, and pressure response |
 | VAV zones | 17 | Varied zone sizing, temperature, humidity, damper, airflow, and reheat behavior |
-| **Total** | **28** | **355 configured BACnet points** |
+| **Total** | **28** | **400 configured BACnet points** |
 
-The checkout contains **28 equipment groups / 355 BACnet points**. The
-historical 2026-07-24 329-point cutover restored WebCTRL writes and confirmed
-COV traffic with zero blocked requests; only WebCTRL discovery/mapping of the
-eight new read-only AHU safety/sensor points remains operator work.
+The checkout contains **28 equipment groups / 400 BACnet points**. The prior
+355-point release is live-accepted. The 45-point plant-controller timing
+addition is configured but requires restart, WebCTRL discovery/mapping,
+readback, and COV checkout before the 400-point package is marked live. See
+`PLANT_CONTROLLER_TIMING.md`.
 
 ## VAV zone strategy
 

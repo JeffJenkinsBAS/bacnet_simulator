@@ -1,0 +1,51 @@
+{
+  "scenario_id": "chiller_anti_recycle_timing",
+  "title": "Chiller Minimum-Run and Anti-Recycle Timing",
+  "description": "Runs Chiller-1 through a normal start, an early stop request held by the local minimum-run controller, and an immediate restart request blocked until minimum-off and startup proof timing both complete.",
+  "initial_conditions": {
+    "outside_air_temperature": 88,
+    "outside_air_humidity": 50
+  },
+  "events": [
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chiller_enable", "value": true, "description": "Make Chiller-1 available" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_iso_valve", "value": true, "description": "Open the evaporator branch" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_pump_ss", "value": true, "description": "Start chilled-water flow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "cw_pump_ss", "value": true, "description": "Start condenser-water flow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "ct_fan_ss", "value": true, "description": "Start tower fan" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "ct_vfd_output", "value": 100, "description": "Provide stable heat rejection" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chiller_ss", "value": true, "description": "Request the first compressor start" },
+    { "time_seconds": 90, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chiller_ss", "value": false, "description": "Request an early normal stop" },
+    { "time_seconds": 240, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chiller_ss", "value": true, "description": "Request an immediate restart during minimum-off" },
+    { "time_seconds": 630, "action": "set_value", "equipment": "ACI-SIM-CHILLER-1", "alias": "chiller_ss", "value": false, "description": "Request final normal stop after second-start evidence" }
+  ],
+  "expected_results": [
+    "Operating State moves from starting (2) to running (3) after the 45-second proof delay",
+    "The early stop command becomes inactive while status remains active and Minimum Run Hold is true",
+    "After the unit stops, the restart command remains active while Anti-Recycle is true and Minimum Off Remaining counts down",
+    "The second proof occurs only after minimum-off and a new startup delay; Start Count reaches two"
+  ],
+  "completion_criteria": [
+    "Student distinguishes the WebCTRL start request from the local controller's effective state and proof",
+    "Student explains why a safety trip would still override the minimum-run hold immediately"
+  ],
+  "instructor_notes": "Run at 10x for about one minute. State codes are numeric AV telemetry because multi-state BACnet objects are not implemented. STOP or restore the baseline after the evidence window to release instructor priorities.",
+  "student_objectives": [
+    "Interpret minimum-run and anti-recycle behavior from commands, state, timers, proof, and start count",
+    "Avoid diagnosing intentional OEM protection as a failed start command"
+  ],
+  "difficulty": "intermediate",
+  "recommended_speed": 10,
+  "observation_points": [
+    "ACI-SIM-CHILLER-1.chiller_ss",
+    "ACI-SIM-CHILLER-1.chiller_status",
+    "ACI-SIM-CHILLER-1.operating_state",
+    "ACI-SIM-CHILLER-1.start_count",
+    "ACI-SIM-CHILLER-1.minimum_run_remaining",
+    "ACI-SIM-CHILLER-1.minimum_off_remaining",
+    "ACI-SIM-CHILLER-1.minimum_run_hold_active",
+    "ACI-SIM-CHILLER-1.anti_recycle_active",
+    "ACI-SIM-CHILLER-1.safety_lockout"
+  ],
+  "prerequisites": ["Chiller water-flow permissives", "Command versus proof", "Local equipment safeties"],
+  "tags": ["chiller", "sequencing", "minimum-run", "anti-recycle", "commissioning"]
+}
