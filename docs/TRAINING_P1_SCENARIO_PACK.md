@@ -75,3 +75,7 @@ criteria need corresponding physical state and observable evidence.
 - Production application-factory acceptance loaded 28 equipment groups, 355
   BACnet objects, six baselines, and all 16 scenarios. Neutral restore settled
   and all six P1 preflights returned no blockers.
+- Live service acceptance completed `economizer_dual_enthalpy_transition` at
+  10x with a 100 percent score. All three assertions passed, 500 one-second
+  samples were persisted, the shoulder checkpoint restored at 1x, and BACnet
+  ended with zero blocked messages and zero COV notification failures.
