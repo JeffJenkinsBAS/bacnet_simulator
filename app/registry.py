@@ -39,6 +39,7 @@ _UNITS_MAP = {
     "btus-per-hour": EngineeringUnits.btusPerHour,
     "pounds-force-per-square-inch": EngineeringUnits.poundsForcePerSquareInch,
     "inches-of-water": EngineeringUnits.inchesOfWater,
+    "seconds": EngineeringUnits.seconds,
     "no-units": EngineeringUnits.noUnits,
 }
 

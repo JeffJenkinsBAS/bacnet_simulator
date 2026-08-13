@@ -1,0 +1,48 @@
+{
+  "scenario_id": "boiler_anti_cycle_timing",
+  "title": "Boiler Purge, Minimum-Run, and Anti-Cycle Timing",
+  "description": "Runs Boiler-1 through purge and ignition, an early stop request held by minimum-run protection, and an immediate restart request blocked by the local anti-cycle timer.",
+  "initial_conditions": {
+    "outside_air_temperature": 35,
+    "outside_air_humidity": 45
+  },
+  "events": [
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-BOILER-1", "alias": "circ_pump_ss", "value": true, "description": "Start the boiler primary circulator" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-BOILER-1", "alias": "hw_pump_ss", "value": true, "description": "Start the distribution pump" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-BOILER-MGR", "alias": "enable_boiler1", "value": true, "description": "Request the first burner start through the manager" },
+    { "time_seconds": 60, "action": "set_value", "equipment": "ACI-SIM-BOILER-MGR", "alias": "enable_boiler1", "value": false, "description": "Request an early normal stop" },
+    { "time_seconds": 180, "action": "set_value", "equipment": "ACI-SIM-BOILER-MGR", "alias": "enable_boiler1", "value": true, "description": "Request an immediate restart during anti-cycle" },
+    { "time_seconds": 330, "action": "set_value", "equipment": "ACI-SIM-BOILER-MGR", "alias": "enable_boiler1", "value": false, "description": "Request final normal stop after second-start evidence" }
+  ],
+  "expected_results": [
+    "Start Permissive proves after the circulator responds; Operating State remains purge/ignition (2) until the 35-second sequence finishes",
+    "The early manager enable turns off while Boiler OK stays active and Minimum Run Hold is true",
+    "The restart request is blocked with Anti-Recycle active until the 60-second minimum-off period clears",
+    "A second purge/ignition sequence completes and Start Count reaches two"
+  ],
+  "completion_criteria": [
+    "Student separates manager request, local start permissive, purge/ignition, proof, firing rate, and thermal output",
+    "Student identifies a timer-controlled restart rather than an ignition failure"
+  ],
+  "instructor_notes": "Run at 10x for roughly 33 seconds. The manager remains the WebCTRL staging front door; local unit timing cannot be bypassed by the manager command.",
+  "student_objectives": [
+    "Interpret boiler purge, minimum-run, and anti-cycle states",
+    "Use start counters and timer telemetry to validate a complete restart"
+  ],
+  "difficulty": "intermediate",
+  "recommended_speed": 10,
+  "observation_points": [
+    "ACI-SIM-BOILER-MGR.enable_boiler1",
+    "ACI-SIM-BOILER-1.boiler_ok",
+    "ACI-SIM-BOILER-1.operating_state",
+    "ACI-SIM-BOILER-1.start_count",
+    "ACI-SIM-BOILER-1.minimum_run_remaining",
+    "ACI-SIM-BOILER-1.minimum_off_remaining",
+    "ACI-SIM-BOILER-1.minimum_run_hold_active",
+    "ACI-SIM-BOILER-1.anti_recycle_active",
+    "ACI-SIM-BOILER-1.start_permissive",
+    "ACI-SIM-BOILER-1.firing_rate"
+  ],
+  "prerequisites": ["Boiler manager enable", "Purge and ignition timing", "Command versus proof"],
+  "tags": ["boiler", "sequencing", "purge", "minimum-run", "anti-cycle", "commissioning"]
+}

@@ -50,6 +50,24 @@ NEW_HW_POINT_ALIASES = {
     "ACI-SIM-BOILER-2": {"hwr_temp", "hws_temp", "boiler_flow", "firing_rate", "circ_pump_status", "hw_pump_status"},
     "ACI-SIM-BOILER-3": {"hwr_temp", "hws_temp", "boiler_flow", "firing_rate", "circ_pump_status", "hw_pump_status"},
 }
+NEW_CONTROLLER_POINT_ALIASES = {
+    **{
+        f"ACI-SIM-CHILLER-{number}": {
+            "operating_state", "start_count", "minimum_run_remaining",
+            "minimum_off_remaining", "compressor_capacity",
+            "anti_recycle_active", "minimum_run_hold_active", "safety_lockout",
+        }
+        for number in range(1, 4)
+    },
+    **{
+        f"ACI-SIM-BOILER-{number}": {
+            "operating_state", "start_count", "minimum_run_remaining",
+            "minimum_off_remaining", "anti_recycle_active",
+            "minimum_run_hold_active", "start_permissive",
+        }
+        for number in range(1, 4)
+    },
+}
 
 
 def _groups() -> list[EquipmentGroupConfig]:
@@ -61,7 +79,7 @@ def _groups() -> list[EquipmentGroupConfig]:
     return groups
 
 
-def test_catalog_preserves_321_identifiers_and_adds_ahu_and_hw_telemetry() -> None:
+def test_catalog_preserves_321_identifiers_and_adds_verified_telemetry() -> None:
     groups = _groups()
     rows: list[tuple[str, str, str, int]] = []
     existing_rows: list[tuple[str, str, str, int]] = []
@@ -79,13 +97,15 @@ def test_catalog_preserves_321_identifiers_and_adds_ahu_and_hw_telemetry() -> No
             if (
                 group.group_id == "ACI-SIM-AHU-1"
                 and point.alias in NEW_AHU_POINT_INSTANCES
-            ) or point.alias in NEW_HW_POINT_ALIASES.get(group.group_id, set()):
+            ) or point.alias in NEW_HW_POINT_ALIASES.get(
+                group.group_id, set()
+            ) or point.alias in NEW_CONTROLLER_POINT_ALIASES.get(group.group_id, set()):
                 new_rows.append(row)
             else:
                 existing_rows.append(row)
 
     assert len(groups) == 28
-    assert len(rows) == 355
+    assert len(rows) == 400
     assert len(existing_rows) == 321
     serialized = "\n".join(
         "|".join(map(str, row))
@@ -102,7 +122,7 @@ def test_catalog_preserves_321_identifiers_and_adds_ahu_and_hw_telemetry() -> No
         )
         for alias, (object_type, local_instance) in NEW_AHU_POINT_INSTANCES.items()
     ]
-    assert len(new_rows) == 34
+    assert len(new_rows) == 79
     assert all(row in new_rows for row in expected_new_rows)
 
     humidity_rows = [

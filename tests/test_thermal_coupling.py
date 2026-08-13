@@ -188,11 +188,20 @@ async def test_start_command_alone_uses_default_enable_and_proves_status() -> No
     assert registry.view("ACI-SIM-CHILLER-1").get("chiller_status") == 1.0
     assert registry.view("ACI-SIM-CHW-PLANT").get("chiller1_ok") == 1.0
 
-    # An explicit inactive S/S write drops proof immediately. This guards
-    # against the simulator latching a prior Start after WebCTRL sends Stop.
+    # A normal stop request is held until the local minimum-run protection
+    # expires; this is visible and is not a latched BAS command. Physical
+    # safeties and lost flow still stop immediately in dedicated tests.
     await _write(registry, "ACI-SIM-CHILLER-1", "chiller_ss", False)
     chiller.tick(1.0)
     manager.tick(1.0)
+    assert chiller.proven
+    assert registry.view("ACI-SIM-CHILLER-1").get("minimum_run_hold_active") == 1.0
+    for _ in range(180):
+        site.tick(1.0)
+        chiller.tick(1.0)
+        manager.tick(1.0)
+        if not chiller.proven:
+            break
     assert not chiller.proven
     assert registry.view("ACI-SIM-CHILLER-1").get("chiller_status") == 0.0
     assert registry.view("ACI-SIM-CHW-PLANT").get("chiller1_ok") == 0.0

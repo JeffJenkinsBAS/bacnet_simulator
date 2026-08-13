@@ -19,10 +19,11 @@ restore, BACnet priority reconciliation, scenario preflight, internal evidence
 recording, and time-window scoring for all shipped scenarios. Completed
 attempts are written to `artifacts/training/` as JSON evidence bundles.
 
-The P1 scenario pack expands the catalog to **16 graded scenarios** with
+The P1 and plant-controller timing packs provide **18 graded scenarios** with
 economizer psychrometrics/actuator diagnosis, CHW bypass and pump-proof
 failures, negative-building-pressure recovery, BACnet priority conflict, and
-blinded parent-to-child comfort diagnosis.
+blinded parent-to-child comfort diagnosis, chiller anti-recycle, and boiler
+purge/minimum-run/anti-cycle commissioning.
 
 Set `ACI_SIM_INSTRUCTOR_PIN` for the Windows service, or read the locally
 generated PIN from `logs/training-instructor-pin.txt`. See
@@ -30,18 +31,29 @@ generated PIN from `logs/training-instructor-pin.txt`. See
 permissions, endpoints, and recovery semantics.
 
 **Status:** Phases 1–6a complete plus audit-and-hardening passes
-(2026-07-17 through 2026-08-11). The configured 355-point release passes
-**199 automated tests**. The historical 329-point release was verified live
-on the Windows bench service before this additive HW-loop telemetry release.
-The historical 321-point baseline passed 129 tests. Core BACnet behavior has
+(2026-07-17 through 2026-08-12). The checkout contains a 400-point
+plant-controller timing package. The prior 355-point release is live-accepted;
+the 45 new read-only objects require restart and WebCTRL discovery/COV
+acceptance before the 400-point package is marked live. The historical
+329-point release was verified live before the additive HW-loop telemetry.
+All 204 collected tests pass when test modules are run in isolated processes;
+the combined Windows invocation has a process-shutdown issue under
+investigation and is not used as the acceptance result. The historical
+321-point baseline passed 129 tests. Core BACnet behavior has
 been verified against real
 cross-process BACnet/IP traffic on Windows, not assumed from unit tests alone. See
 [`SIMULATION_AUDIT.md`](SIMULATION_AUDIT.md) for the audit and
 [`HANDOFF.md`](HANDOFF.md) §0 for the session log.
 
-**Deployment state:** The current checkout contains **28 groups / 355 BACnet
-points**. This release preserves every identifier in the verified 329-point
-catalog, including eight read-only AHU-1 sensor/safety objects: mixed-air
+**Deployment state:** The current checkout contains **28 groups / 400 BACnet
+points**. It preserves every identifier in the live-accepted 355-point catalog
+and adds local chiller/boiler state, start-count, minimum-run/minimum-off,
+anti-recycle, capacity/lockout, and start-permissive telemetry. WebCTRL retains
+staging authority, while physical safeties override timing holds immediately.
+See [`docs/PLANT_CONTROLLER_TIMING.md`](docs/PLANT_CONTROLLER_TIMING.md).
+
+The release also preserves the verified 329-point catalog, including eight
+read-only AHU-1 sensor/safety objects: mixed-air
 humidity `AI:9005`, supply-air humidity `AI:9006`, cooling-coil entering-air
 temperature `AI:9007`, automatic high-static trip `BI:9044`, supply-duct
 structural failure `BI:9045`, automatic freezestat trip `BI:9046`,
@@ -75,7 +87,7 @@ Evidence:
 
 ## What this actually does
 
-- Configures **355 BACnet objects** in the checkout under **one supervisory device**
+- Configures **400 BACnet objects** in the checkout under **one supervisory device**
   (`ACI-SIM-SUPERVISOR`, instance `242000`) on the bench simulator host
   `192.168.168.201`, listening on **UDP `47808`**. A transport-level
   `peer_allowlist` drops every BACnet request from any non-allowlisted
@@ -163,10 +175,11 @@ Evidence:
   high-static and freezestat devices, that
   give real meaning to every named fault a technician needs to practice
   diagnosing.
-- **Runs timed training scenarios** — ten shipped, including interlock and
+- **Runs timed training scenarios** — eighteen shipped, including interlock and
   compound-safety failures, stuck actuators, sensor drift/freeze,
   failed-to-prove equipment, whole-device communications loss, and complete
-  CHW/HW parent-to-child load-response labs. Events execute against bounded
+  CHW/HW parent-to-child load-response and plant anti-recycle timing labs.
+  Events execute against bounded
   simulated time so sequencing remains ordered from 1x through 60x.
 - **Lets an instructor ask for scenarios and faults in plain language**
   through a local Ollama LLM, with every proposed action validated and

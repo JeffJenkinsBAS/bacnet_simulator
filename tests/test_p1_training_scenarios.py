@@ -12,6 +12,8 @@ P1_SCENARIOS = (
     "building_negative_pressure_recovery",
     "bacnet_priority3_conflict",
     "chw_pump_proof_loss_comfort_complaint",
+    "chiller_anti_recycle_timing",
+    "boiler_anti_cycle_timing",
 )
 
 

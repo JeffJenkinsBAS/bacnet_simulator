@@ -251,6 +251,11 @@ command-center API publishes method, availability, OA/RA enthalpy, enthalpy
 delta, OA dew point, requested/effective position, limiting reason, proof
 timer, and FDD flags. These are computed diagnostics rather than new BACnet
 objects. The separate HW telemetry release expands the catalog to 355 points.
+The plant-controller timing package preserves those identifiers and adds 45
+BACnet objects for chiller/boiler operating state, start counters, remaining
+minimum run/off time, permissives, and anti-recycle visibility, bringing the
+configured catalog to 400 points. See
+[`PLANT_CONTROLLER_TIMING.md`](PLANT_CONTROLLER_TIMING.md).
 
 ## Air-delivery animation contract
 

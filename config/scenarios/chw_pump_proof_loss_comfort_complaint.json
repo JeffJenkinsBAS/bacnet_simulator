@@ -20,13 +20,13 @@
     { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "damper_position_command", "value": 100, "description": "Open VAV-3" },
     { "time_seconds": 180, "action": "set_fault", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_pump_status", "fault": "forced_status", "value": false, "description": "Remove physical pump proof and capacity" },
     { "time_seconds": 360, "action": "clear_fault", "equipment": "ACI-SIM-CHILLER-1", "alias": "chw_pump_status", "fault": "forced_status", "description": "Repair the CHW pump/proof circuit" },
-    { "time_seconds": 540, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 0, "description": "Remove load after recovery" }
+    { "time_seconds": 600, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "cooling_valve", "value": 0, "description": "Remove load after anti-recycle and proof recovery" }
   ],
   "expected_results": [
     "The CHW-pump command remains on while pump proof, common flow, and chiller proof fall away",
     "The AHU cooling-valve request remains high but cannot produce useful cooling without parent water flow",
     "SAT and VAV discharge/zone temperatures degrade after thermal transport delay",
-    "When pump proof returns, flow recovers first and chiller proof follows only after the normal startup delay"
+    "When pump proof returns, flow recovers first; the local anti-recycle timer then clears before startup and proof can complete"
   ],
   "completion_criteria": [
     "Student traces the comfort complaint from zone to VAV, AHU valve, common flow, pump proof, and chiller proof",
@@ -40,6 +40,9 @@
     "ACI-SIM-CHILLER-1.chw_pump_ss",
     "ACI-SIM-CHILLER-1.chw_pump_status",
     "ACI-SIM-CHILLER-1.chiller_status",
+    "ACI-SIM-CHILLER-1.operating_state",
+    "ACI-SIM-CHILLER-1.anti_recycle_active",
+    "ACI-SIM-CHILLER-1.minimum_off_remaining",
     "ACI-SIM-CHW-PLANT.chws_flow_common",
     "ACI-SIM-CHW-PLANT.chws_temp_common",
     "ACI-SIM-CHW-PLANT.chwr_temp_common",
@@ -48,6 +51,6 @@
     "ACI-SIM-VAV-3.discharge_temp",
     "ACI-SIM-VAV-3.zone_temp"
   ],
-  "prerequisites": ["Parent-child availability", "Pump command versus proof", "Thermal transport delay"],
+  "prerequisites": ["Parent-child availability", "Pump command versus proof", "Chiller anti-recycle", "Thermal transport delay"],
   "tags": ["chilled-water", "pump", "proof", "comfort-complaint", "blinded", "parent-child"]
 }

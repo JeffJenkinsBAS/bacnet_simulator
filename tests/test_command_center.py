@@ -221,7 +221,7 @@ def test_deployed_layout_and_generated_catalog_are_complete_and_valid() -> None:
     ]
     validate_equipment_groups(groups)
     assert len(groups) == 28
-    assert sum(len(group.points) for group in groups) == 355
+    assert sum(len(group.points) for group in groups) == 400
 
     layout = json.loads((CONFIG_DIR / "building_layout.json").read_text())
     CommandCenterDiagnostics(PointRegistry(groups), layout)
@@ -267,7 +267,7 @@ async def test_full_catalog_builds_and_drives_every_layout_location() -> None:
         for path in sorted((CONFIG_DIR / "devices").glob("*.json"))
     ]
     registry = PointRegistry(groups)
-    assert len(registry.build_objects()) == 355
+    assert len(registry.build_objects()) == 400
     diagnostics = CommandCenterDiagnostics(
         registry,
         json.loads((CONFIG_DIR / "building_layout.json").read_text()),
