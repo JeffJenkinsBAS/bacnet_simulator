@@ -1,0 +1,43 @@
+{
+  "scenario_id": "economizer_damper_stuck",
+  "title": "Economizer Commanded Open With Damper Mechanically Stuck",
+  "description": "Provides favorable economizer weather and a 100 percent command, then pins the effective outside-air damper near minimum ventilation so the command, air-mixing process, and fault evidence disagree.",
+  "initial_conditions": {
+    "outside_air_temperature": 50,
+    "outside_air_humidity": 30
+  },
+  "events": [
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "sa_fan_ss", "value": true, "description": "Start supply fan" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "ra_fan_ss", "value": true, "description": "Start return fan" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "economizer", "value": 100, "description": "Request full economizer" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "airflow_setpoint", "value": 300, "description": "Establish airflow" },
+    { "time_seconds": 0, "action": "set_value", "equipment": "ACI-SIM-VAV-3", "alias": "damper_position_command", "value": 100, "description": "Open VAV-3" },
+    { "time_seconds": 60, "action": "set_fault", "equipment": "ACI-SIM-AHU-1", "alias": "economizer_damper_feedback", "fault": "stuck_value", "value": 20, "description": "Jam the physical OA damper near minimum position" },
+    { "time_seconds": 240, "action": "clear_fault", "equipment": "ACI-SIM-AHU-1", "alias": "economizer_damper_feedback", "fault": "stuck_value", "description": "Repair the damper linkage" },
+    { "time_seconds": 360, "action": "set_value", "equipment": "ACI-SIM-AHU-1", "alias": "economizer", "value": 20, "description": "Return to minimum ventilation" }
+  ],
+  "expected_results": [
+    "The 100 percent command remains visible while mixed air stays much warmer than favorable outside air",
+    "The process evidence is consistent with a damper/linkage problem, not an unfavorable-weather lockout",
+    "After the fault clears, mixed air moves toward outside air with actuator and plenum lag"
+  ],
+  "completion_criteria": [
+    "Student distinguishes a command problem, an actuator problem, and an enthalpy lockout",
+    "Student supports the diagnosis with outside-, return-, and mixed-air trends"
+  ],
+  "instructor_notes": "The feedback alias is an internal physical fault hook and is intentionally not another BACnet object. Students should diagnose from command and process consequences before the fault is revealed.",
+  "student_objectives": ["Use command/process triangulation", "Diagnose an economizer actuator failure without relying on a hidden fault label"],
+  "difficulty": "advanced",
+  "recommended_speed": 10,
+  "observation_points": [
+    "ACI-SIM-SITE.oa_temp",
+    "ACI-SIM-SITE.oa_humidity",
+    "ACI-SIM-AHU-1.ahu_ra_temp",
+    "ACI-SIM-AHU-1.ahu_ma_temp",
+    "ACI-SIM-AHU-1.ahu_sa_temp",
+    "ACI-SIM-AHU-1.economizer",
+    "ACI-SIM-AHU-1.sa_fan_status"
+  ],
+  "prerequisites": ["Economizer suitability", "Actuator versus command", "Mixed-air temperature"],
+  "tags": ["ahu", "economizer", "actuator", "fault-isolation", "blinded"]
+}

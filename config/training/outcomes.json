@@ -13,12 +13,50 @@
       {"assertion_id": "boiler2_remains_unproved", "title": "Boiler-2 remains unproved", "point": "ACI-SIM-BOILER-2.boiler_ok", "operator": "eq", "value": false, "start_seconds": 65, "end_seconds": 180, "for_seconds": 30, "weight": 1},
       {"assertion_id": "boiler2_firing_zero", "title": "Boiler-2 firing remains zero", "point": "ACI-SIM-BOILER-2.firing_rate", "operator": "le", "value": 0.1, "start_seconds": 65, "end_seconds": 180, "for_seconds": 30, "weight": 1}
     ],
+    "bacnet_priority3_conflict": [
+      {"assertion_id": "priority3_holds_low_setpoint", "title": "Priority 3 holds the effective setpoint at 0.25 in. H2O", "point": "ACI-SIM-AHU-1.duct_static_pressure_setpoint", "operator": "eq", "value": 0.25, "tolerance": 0.01, "start_seconds": 80, "end_seconds": 220, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "static_follows_forced_setpoint", "title": "Duct static falls with the forced setpoint", "point": "ACI-SIM-AHU-1.duct_static_pressure", "operator": "lt", "value": 0.65, "start_seconds": 140, "end_seconds": 230, "for_seconds": 20, "weight": 1},
+      {"assertion_id": "setpoint_authority_recovers", "title": "Lower priority or default regains authority", "point": "ACI-SIM-AHU-1.duct_static_pressure_setpoint", "operator": "gt", "value": 0.5, "start_seconds": 260, "end_seconds": 350, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "static_recovers", "title": "Duct static recovers after relinquish", "point": "ACI-SIM-AHU-1.duct_static_pressure", "operator": "gt", "value": 0.75, "start_seconds": 260, "end_seconds": 350, "for_seconds": 20, "weight": 1}
+    ],
+    "building_negative_pressure_recovery": [
+      {"assertion_id": "initial_pressure_positive", "title": "Low exhaust permits positive building pressure", "point": "ACI-SIM-SITE.building_pressure", "operator": "gt", "value": 0.005, "start_seconds": 60, "end_seconds": 170, "for_seconds": 30, "weight": 1},
+      {"assertion_id": "exhaust_drives_negative_pressure", "title": "Excess exhaust drives negative pressure", "point": "ACI-SIM-SITE.building_pressure", "operator": "lt", "value": -0.05, "start_seconds": 220, "end_seconds": 340, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "pressure_recovers", "title": "Building pressure recovers after exhaust trim", "point": "ACI-SIM-SITE.building_pressure", "operator": "gt", "value": 0.005, "start_seconds": 400, "end_seconds": 470, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "exhaust_proof_present", "title": "EF-1 proof remains present through the disturbance", "point": "ACI-SIM-EF-1.fan_status", "operator": "eq", "value": true, "start_seconds": 30, "end_seconds": 470, "for_seconds": 30, "weight": 1}
+    ],
     "chilled_water_load_response": [
       {"assertion_id": "chwr_above_chws", "title": "Loaded CHWR exceeds CHWS", "point": "ACI-SIM-CHW-PLANT.chwr_temp_common", "operator": "gt", "other_point": "ACI-SIM-CHW-PLANT.chws_temp_common", "offset": 0.25, "start_seconds": 260, "end_seconds": 420, "for_seconds": 30, "weight": 2},
       {"assertion_id": "chiller_proves", "title": "Chiller-1 proves", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 45, "end_seconds": 180, "for_seconds": 10, "weight": 1}
     ],
     "chiller1_chws_sensor_drift": [
       {"assertion_id": "unit_sensor_diverges", "title": "Unit CHWS sensor diverges from common CHWS", "point": "ACI-SIM-CHILLER-1.chws_temp", "operator": "gt", "other_point": "ACI-SIM-CHW-PLANT.chws_temp_common", "offset": 0.5, "start_seconds": 150, "end_seconds": 480, "for_seconds": 10, "weight": 1}
+    ],
+    "chw_excessive_bypass_low_flow": [
+      {"assertion_id": "chiller_proves_before_bypass", "title": "Chiller proves with full evaporator flow", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 60, "end_seconds": 170, "for_seconds": 20, "weight": 1},
+      {"assertion_id": "common_flow_remains", "title": "Common CHW flow remains despite bypass", "point": "ACI-SIM-CHW-PLANT.chws_flow_common", "operator": "gt", "value": 250, "start_seconds": 220, "end_seconds": 340, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "bypass_drops_chiller_proof", "title": "Low barrel flow drops chiller proof", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": false, "start_seconds": 220, "end_seconds": 340, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "chiller_reproves_after_close", "title": "Chiller reproves after bypass closes", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 430, "end_seconds": 530, "for_seconds": 20, "weight": 2}
+    ],
+    "chw_pump_proof_loss_comfort_complaint": [
+      {"assertion_id": "normal_cooling_chain_proves", "title": "Normal chiller proof establishes before the fault", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 60, "end_seconds": 170, "for_seconds": 20, "weight": 1},
+      {"assertion_id": "pump_command_remains_on", "title": "CHW pump command remains on", "point": "ACI-SIM-CHILLER-1.chw_pump_ss", "operator": "eq", "value": true, "start_seconds": 220, "end_seconds": 340, "for_seconds": 30, "weight": 1},
+      {"assertion_id": "pump_proof_is_lost", "title": "CHW pump proof is lost", "point": "ACI-SIM-CHILLER-1.chw_pump_status", "operator": "eq", "value": false, "start_seconds": 220, "end_seconds": 340, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "common_flow_collapses", "title": "Common CHW flow collapses", "point": "ACI-SIM-CHW-PLANT.chws_flow_common", "operator": "lt", "value": 1, "start_seconds": 220, "end_seconds": 340, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "child_valve_request_persists", "title": "AHU cooling request persists without parent flow", "point": "ACI-SIM-AHU-1.cooling_valve", "operator": "gt", "value": 70, "start_seconds": 220, "end_seconds": 340, "for_seconds": 30, "weight": 1},
+      {"assertion_id": "supply_air_warms", "title": "AHU supply air warms after parent loss", "point": "ACI-SIM-AHU-1.ahu_sa_temp", "operator": "gt", "value": 74, "start_seconds": 260, "end_seconds": 350, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "pump_proof_recovers", "title": "CHW pump proof recovers first", "point": "ACI-SIM-CHILLER-1.chw_pump_status", "operator": "eq", "value": true, "start_seconds": 380, "end_seconds": 520, "for_seconds": 20, "weight": 1},
+      {"assertion_id": "chiller_reproves", "title": "Chiller reproves after startup delay", "point": "ACI-SIM-CHILLER-1.chiller_status", "operator": "eq", "value": true, "start_seconds": 430, "end_seconds": 520, "for_seconds": 20, "weight": 2}
+    ],
+    "economizer_damper_stuck": [
+      {"assertion_id": "full_economizer_requested", "title": "Full economizer remains requested", "point": "ACI-SIM-AHU-1.economizer", "operator": "eq", "value": 100, "start_seconds": 80, "end_seconds": 220, "for_seconds": 30, "weight": 1},
+      {"assertion_id": "mixed_air_reveals_stuck_damper", "title": "Mixed air remains far above favorable outside air", "point": "ACI-SIM-AHU-1.ahu_ma_temp", "operator": "gt", "other_point": "ACI-SIM-SITE.oa_temp", "offset": 10, "start_seconds": 100, "end_seconds": 220, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "mixed_air_recovers_after_repair", "title": "Mixed air approaches outside air after repair", "point": "ACI-SIM-AHU-1.ahu_ma_temp", "operator": "lt", "other_point": "ACI-SIM-AHU-1.ahu_ra_temp", "offset": -10, "start_seconds": 280, "end_seconds": 350, "for_seconds": 20, "weight": 2}
+    ],
+    "economizer_dual_enthalpy_transition": [
+      {"assertion_id": "favorable_oa_dominates_mixed_air", "title": "Favorable outside air pulls mixed air below return air", "point": "ACI-SIM-AHU-1.ahu_ma_temp", "operator": "lt", "other_point": "ACI-SIM-AHU-1.ahu_ra_temp", "offset": -10, "start_seconds": 100, "end_seconds": 220, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "warm_humid_lockout_limits_oa", "title": "Warm-humid lockout keeps mixed air well below outside air", "point": "ACI-SIM-SITE.oa_temp", "operator": "gt", "other_point": "ACI-SIM-AHU-1.ahu_ma_temp", "offset": 5, "start_seconds": 340, "end_seconds": 470, "for_seconds": 30, "weight": 2},
+      {"assertion_id": "economizer_request_stays_high", "title": "Command remains high across the suitability transition", "point": "ACI-SIM-AHU-1.economizer", "operator": "eq", "value": 100, "start_seconds": 100, "end_seconds": 470, "for_seconds": 60, "weight": 1}
     ],
     "hot_water_reheat_load_response": [
       {"assertion_id": "hws_above_hwr", "title": "Loaded HWS exceeds HWR", "point": "ACI-SIM-BOILER-MGR.hws_temp_common", "operator": "gt", "other_point": "ACI-SIM-BOILER-MGR.hwr_temp_common", "offset": 0.2, "start_seconds": 150, "end_seconds": 420, "for_seconds": 30, "weight": 2},
